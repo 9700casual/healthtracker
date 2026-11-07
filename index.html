@@ -34,13 +34,33 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Standalone Cloud & Local Sync Integration (Ready for GitHub Pages) -->
+    <!-- Firebase SDK (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <!-- Standalone Cloud, Firebase & Local Sync Integration -->
     <script>
         // Storage configuration for Standalone / GitHub Pages deployment
         window.cloudSyncActive = true;
         window.cloudHealthEntries = [];
         window.cloudStrengthEntries = [];
         window.cloudDeletedExercises = [];
+
+        // Firebase instance variables
+        window.DEFAULT_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBp5J7a3ptfNbYJBeHXcNx7i8erM09upWQ",
+            authDomain: "mit-fittrack.firebaseapp.com",
+            projectId: "mit-fittrack",
+            storageBucket: "mit-fittrack.firebasestorage.app",
+            messagingSenderId: "543673643808",
+            appId: "1:543673643808:web:9ba5eacdb03005130c5d45"
+        };
+        window.firebaseApp = null;
+        window.firebaseDb = null;
+        window.firebaseConnected = false;
+        window.unsubscribeHealth = null;
+        window.unsubscribeStrength = null;
+        window.unsubscribeSettings = null;
 
         // Load local cache immediately for instant startup
         try {
@@ -59,6 +79,181 @@
             console.warn("Lokal lagring er begrænset:", e);
         }
 
+        // Robust Firebase Config Parser (handles JSON, JS object syntax, and raw copy-paste)
+        window.parseFirebaseConfigInput = function(raw) {
+            if (!raw || typeof raw !== 'string') return null;
+            const trimmed = raw.trim();
+            try {
+                const obj = JSON.parse(trimmed);
+                if (obj && obj.projectId && obj.apiKey) return obj;
+            } catch (e) {}
+
+            let cleaned = trimmed
+                .replace(/^\s*(?:const|let|var)\s+\w+\s*=\s*/i, '')
+                .replace(/;\s*$/, '')
+                .trim();
+
+            try {
+                const obj = JSON.parse(cleaned);
+                if (obj && obj.projectId && obj.apiKey) return obj;
+            } catch (e) {}
+
+            const config = {};
+            const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'];
+            keys.forEach(k => {
+                const reg = new RegExp(`['"]?${k}['"]?\\s*:\\s*['"\`]([^'"\`]+)['"\`]`, 'i');
+                const match = trimmed.match(reg);
+                if (match && match[1]) {
+                    config[k] = match[1].trim();
+                }
+            });
+
+            if (config.apiKey && config.projectId) {
+                return config;
+            }
+            return null;
+        };
+
+        // Firebase Status UI Helper
+        window.updateFirebaseStatusUI = function(connected, message) {
+            const badge = document.getElementById('firebaseConnectionBadge');
+            const diagBox = document.getElementById('firebaseDiagnosticBox');
+            const diagText = document.getElementById('firebaseDiagnosticText');
+
+            if (badge) {
+                if (connected) {
+                    badge.className = "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Forbundet til Firestore</span>';
+                } else {
+                    badge.className = "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
+                    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span><span>Ikke forbundet (Lokal tilstand)</span>';
+                }
+            }
+
+            if (diagBox && diagText && message) {
+                diagBox.classList.remove('hidden');
+                diagText.innerText = (connected ? "✅ " : "ℹ️ ") + message;
+            }
+        };
+
+        // Firebase Realtime Listener setup
+        window.setupFirebaseListeners = function() {
+            if (!window.firebaseDb) return;
+
+            if (window.unsubscribeHealth) window.unsubscribeHealth();
+            if (window.unsubscribeStrength) window.unsubscribeStrength();
+            if (window.unsubscribeSettings) window.unsubscribeSettings();
+
+            // 1. Health entries
+            window.unsubscribeHealth = window.firebaseDb.collection('fittrack_health')
+                .onSnapshot(snapshot => {
+                    const items = [];
+                    snapshot.forEach(doc => {
+                        const d = doc.data();
+                        if (d.date) {
+                            items.push({
+                                date: d.date,
+                                weight: parseFloat(d.weight) || 0,
+                                fat: parseFloat(d.fat) || 0,
+                                muscle: parseFloat(d.muscle) || 0,
+                                vo2: parseFloat(d.vo2) || 0
+                            });
+                        }
+                    });
+                    items.sort((a, b) => new Date(a.date) - new Date(b.date));
+                    window.cloudHealthEntries = items;
+                    try { localStorage.setItem('fittrack_local_health', JSON.stringify(items)); } catch(e) {}
+                    if (window.mergeAndRenderData) window.mergeAndRenderData();
+                }, err => {
+                    console.warn("Firestore sundheds-fejl:", err);
+                    window.updateFirebaseStatusUI(false, `Læsefejl (Sundhed): ${err.message}`);
+                });
+
+            // 2. Strength entries
+            window.unsubscribeStrength = window.firebaseDb.collection('fittrack_strength')
+                .onSnapshot(snapshot => {
+                    const items = [];
+                    snapshot.forEach(doc => {
+                        const d = doc.data();
+                        if (d.date && d.exercise) {
+                            items.push({
+                                date: d.date,
+                                exercise: d.exercise,
+                                weight: parseFloat(d.weight) || 0
+                            });
+                        }
+                    });
+                    items.sort((a, b) => new Date(a.date) - new Date(b.date));
+                    window.cloudStrengthEntries = items;
+                    try { localStorage.setItem('fittrack_local_strength', JSON.stringify(items)); } catch(e) {}
+                    if (window.mergeAndRenderData) window.mergeAndRenderData();
+                }, err => {
+                    console.warn("Firestore styrke-fejl:", err);
+                    window.updateFirebaseStatusUI(false, `Læsefejl (Styrke): ${err.message}`);
+                });
+
+            // 3. Settings / deleted exercises
+            window.unsubscribeSettings = window.firebaseDb.collection('fittrack_settings').doc('deleted_exercises')
+                .onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (Array.isArray(data.exercises)) {
+                            window.cloudDeletedExercises = data.exercises;
+                            try { localStorage.setItem('fittrack_deleted_exercises', JSON.stringify(window.cloudDeletedExercises)); } catch(e) {}
+                            if (window.mergeAndRenderData) window.mergeAndRenderData();
+                        }
+                    }
+                }, err => {
+                    console.warn("Firestore indstillings-fejl:", err);
+                });
+        };
+
+        // Initialize Firebase
+        window.initFirebase = async function(config, showToastNotification = false) {
+            if (!config || !config.apiKey || !config.projectId) {
+                window.updateFirebaseStatusUI(false, "Ugyldig Firebase konfiguration.");
+                return false;
+            }
+
+            if (typeof firebase === 'undefined') {
+                window.updateFirebaseStatusUI(false, "Firebase biblioteket kunne ikke hentes.");
+                return false;
+            }
+
+            try {
+                if (!firebase.apps.length) {
+                    window.firebaseApp = firebase.initializeApp(config);
+                } else {
+                    window.firebaseApp = firebase.app();
+                }
+
+                window.firebaseDb = firebase.firestore();
+                window.firebaseConnected = true;
+
+                // Offline persistence for gym usage
+                try {
+                    await window.firebaseDb.enablePersistence({ synchronizeTabs: true });
+                } catch (persErr) {
+                    console.warn("Firestore persistence:", persErr.code);
+                }
+
+                window.setupFirebaseListeners();
+                window.updateFirebaseStatusUI(true, `Forbundet til projekt: "${config.projectId}" (Firestore)`);
+
+                if (showToastNotification && typeof showToast === 'function') {
+                    showToast(`🔥 Forbundet til Firebase (${config.projectId})!`);
+                }
+                return true;
+            } catch (err) {
+                console.error("Firebase init fejl:", err);
+                window.updateFirebaseStatusUI(false, `Forbindelsesfejl: ${err.message}`);
+                if (showToastNotification && typeof showToast === 'function') {
+                    showToast(`Firebase fejl: ${err.message}`, true);
+                }
+                return false;
+            }
+        };
+
         // Save Sheet & Webhook URLs
         window.saveSheetUrlToCloud = async function(url, webhookUrl = null) {
             window.savedSheetUrl = url;
@@ -75,6 +270,7 @@
             if (!window.cloudStrengthEntries) window.cloudStrengthEntries = [];
             if (!window.cloudDeletedExercises) window.cloudDeletedExercises = [];
 
+            // Instant local state update
             if (type === 'health') {
                 const idx = window.cloudHealthEntries.findIndex(e => e.date === entry.date);
                 if (idx >= 0) window.cloudHealthEntries[idx] = entry;
@@ -94,6 +290,42 @@
 
             if (window.mergeAndRenderData) {
                 window.mergeAndRenderData();
+            }
+
+            // Write to Firebase Firestore in real-time
+            if (window.firebaseDb) {
+                try {
+                    if (type === 'health') {
+                        await window.firebaseDb.collection('fittrack_health').doc(entry.date).set({
+                            date: entry.date,
+                            weight: parseFloat(entry.weight) || 0,
+                            fat: parseFloat(entry.fat) || 0,
+                            muscle: parseFloat(entry.muscle) || 0,
+                            vo2: parseFloat(entry.vo2) || 0,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    } else if (type === 'strength') {
+                        const docId = `${entry.date}_${encodeURIComponent(entry.exercise.trim())}`;
+                        await window.firebaseDb.collection('fittrack_strength').doc(docId).set({
+                            date: entry.date,
+                            exercise: entry.exercise.trim(),
+                            weight: parseFloat(entry.weight) || 0,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+
+                        if (window.cloudDeletedExercises.includes(entry.exercise.trim())) {
+                            window.cloudDeletedExercises = window.cloudDeletedExercises.filter(ex => ex !== entry.exercise.trim());
+                            await window.firebaseDb.collection('fittrack_settings').doc('deleted_exercises').set({
+                                exercises: window.cloudDeletedExercises
+                            }, { merge: true });
+                        }
+                    }
+                } catch (fbErr) {
+                    console.error("Fejl ved gem i Firestore:", fbErr);
+                    if (typeof showToast === 'function') {
+                        showToast("Fejl ved gem i Firebase: " + fbErr.message, true);
+                    }
+                }
             }
 
             // If user configured Google Sheet Apps Script Webhook, send row automatically across devices
@@ -130,6 +362,23 @@
                 window.mergeAndRenderData();
             }
 
+            if (window.firebaseDb) {
+                try {
+                    await window.firebaseDb.collection('fittrack_settings').doc('deleted_exercises').set({
+                        exercises: window.cloudDeletedExercises
+                    }, { merge: true });
+
+                    const snapshot = await window.firebaseDb.collection('fittrack_strength')
+                        .where('exercise', '==', exerciseName)
+                        .get();
+                    const batch = window.firebaseDb.batch();
+                    snapshot.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                } catch (err) {
+                    console.warn("Kunne ikke slette fra Firestore:", err);
+                }
+            }
+
             // Forward delete event to webhook if active
             const webhook = window.savedWebhookUrl || localStorage.getItem('fittrack_webhook_url');
             if (webhook) {
@@ -141,6 +390,115 @@
                         body: JSON.stringify({ type: 'deleteExercise', exercise: exerciseName })
                     });
                 } catch (err) {}
+            }
+        };
+
+        // UI Handlers for Firebase
+        window.handleSaveFirebaseConfig = async function(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const raw = document.getElementById('firebaseConfigInput')?.value;
+            if (!raw || !raw.trim()) {
+                if (typeof showToast === 'function') showToast('Indsæt venligst din Firebase konfiguration', true);
+                return;
+            }
+
+            const config = window.parseFirebaseConfigInput(raw);
+            if (!config) {
+                if (typeof showToast === 'function') showToast('Kunne ikke genkende Firebase nøglerne. Tjek at apiKey og projectId er med.', true);
+                window.updateFirebaseStatusUI(false, "Ufuldstændigt format. Tjek at apiKey og projectId findes i teksten.");
+                return;
+            }
+
+            try {
+                localStorage.setItem('fittrack_firebase_config', JSON.stringify(config));
+            } catch (err) {}
+
+            const ok = await window.initFirebase(config, true);
+            if (ok) {
+                const el = document.getElementById('firebaseConfigInput');
+                if (el) el.value = JSON.stringify(config, null, 2);
+            }
+        };
+
+        window.disconnectFirebase = function() {
+            if (window.unsubscribeHealth) window.unsubscribeHealth();
+            if (window.unsubscribeStrength) window.unsubscribeStrength();
+            if (window.unsubscribeSettings) window.unsubscribeSettings();
+            window.firebaseDb = null;
+            window.firebaseConnected = false;
+            try {
+                localStorage.removeItem('fittrack_firebase_config');
+            } catch (e) {}
+
+            const el = document.getElementById('firebaseConfigInput');
+            if (el) el.value = '';
+
+            window.updateFirebaseStatusUI(false, "Firebase er afbrudt. Kører nu i lokal tilstand.");
+            if (typeof showToast === 'function') showToast('Firebase forbindelsen er afbrudt');
+            if (window.mergeAndRenderData) window.mergeAndRenderData();
+        };
+
+        window.uploadCurrentDataToFirebase = async function() {
+            if (!window.firebaseDb) {
+                if (typeof showToast === 'function') showToast('Tilslut venligst Firebase først!', true);
+                return;
+            }
+            try {
+                if (typeof showToast === 'function') showToast('Overfører dine data fra Google Sheet til Firebase Firestore...');
+
+                // Use current sheet data if loaded, otherwise use verified Google Sheet data
+                const targetHealth = (sheetHealthData && sheetHealthData.length > 0) ? sheetHealthData : [
+                    { date: '2026-08-12', weight: 79.55, fat: 20.8, muscle: 73.7, vo2: 40.3 },
+                    { date: '2026-08-31', weight: 81.25, fat: 19.9, muscle: 74.6, vo2: 40.3 }
+                ];
+
+                const targetStrength = (sheetStrengthData && sheetStrengthData.length > 0) ? sheetStrengthData : [
+                    { date: '2026-08-14', exercise: 'Preacher Curls', weight: 2.5 },
+                    { date: '2026-08-14', exercise: 'Dumbbell Chest Press', weight: 12 },
+                    { date: '2026-08-14', exercise: 'Lat Pulldown', weight: 40 },
+                    { date: '2026-08-14', exercise: 'Dumbbell Back pull', weight: 12 },
+                    { date: '2026-08-14', exercise: 'Shoulder Press', weight: 15 },
+                    { date: '2026-08-30', exercise: 'Shoulder Press', weight: 20 },
+                    { date: '2026-08-30', exercise: 'Leg press', weight: 70 },
+                    { date: '2026-08-30', exercise: 'Leg curl', weight: 20 },
+                    { date: '2026-08-30', exercise: 'Planke', weight: 0.1 },
+                    { date: '2026-09-16', exercise: 'Leg curl', weight: 25 }
+                ];
+
+                let countH = 0;
+                let countS = 0;
+
+                for (const h of targetHealth) {
+                    await window.firebaseDb.collection('fittrack_health').doc(h.date).set({
+                        date: h.date,
+                        weight: parseFloat(h.weight) || 0,
+                        fat: parseFloat(h.fat) || 0,
+                        muscle: parseFloat(h.muscle) || 0,
+                        vo2: parseFloat(h.vo2) || 0,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    countH++;
+                }
+
+                for (const s of targetStrength) {
+                    const docId = `${s.date}_${encodeURIComponent(s.exercise.trim())}`;
+                    await window.firebaseDb.collection('fittrack_strength').doc(docId).set({
+                        date: s.date,
+                        exercise: s.exercise.trim(),
+                        weight: parseFloat(s.weight) || 0,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    countS++;
+                }
+
+                if (typeof showToast === 'function') {
+                    showToast(`🎉 Succes! Overførte ${countH} sundheds- og ${countS} styrkeposter fra dit Google Sheet til Firebase.`);
+                }
+            } catch (err) {
+                console.error("Fejl ved overførsel til Firebase:", err);
+                if (typeof showToast === 'function') {
+                    showToast('Fejl ved overførsel: ' + err.message, true);
+                }
             }
         };
     </script>
@@ -199,8 +557,8 @@
                     <span>Styrke & Øvelser</span>
                 </button>
                 <button onclick="switchTab('setup')" id="tab-setup" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all ml-auto">
-                    <i class="fa-solid fa-file-csv"></i>
-                    <span>Google Sheet Forbindelse</span>
+                    <i class="fa-solid fa-database"></i>
+                    <span>Database & Sky</span>
                 </button>
             </nav>
         </div>
@@ -415,13 +773,105 @@
             </div>
         </section>
 
-        <!-- TAB 3: SETUP & GOOGLE SHEETS CONNECTOR -->
+        <!-- TAB 3: SETUP & GOOGLE SHEETS / FIREBASE CONNECTOR -->
         <section id="section-setup" class="tab-section hidden space-y-6">
             
+            <!-- FIREBASE CLOUD DATABASE CONNECTOR -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                            <i class="fa-solid fa-fire"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
+                                Firebase Cloud Firestore
+                            </h2>
+                            <p class="text-xs text-slate-400">Realtidsdatabase direkte forbundet til din app</p>
+                        </div>
+                    </div>
+                    <div id="firebaseConnectionBadge" class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                        <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                        <span id="firebaseStatusText">Ikke forbundet (Lokal tilstand)</span>
+                    </div>
+                </div>
+
+                <p class="text-slate-300 text-sm leading-relaxed mb-6">
+                    Når Firebase er forbundet, gemmes alle registreringer fra <b>+ Log Data</b> og hurtig-justeringer direkte i din egen sikre Google Firebase database i realtid. Du kan logge nede i træningscenteret fra din mobil, og det opdateres øjeblikkeligt her!
+                </p>
+
+                <!-- 3-Step Setup Guide -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">1</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Opret projekt</h3>
+                        <p class="text-xs text-slate-400">
+                            Gå til <a href="https://console.firebase.google.com" target="_blank" class="text-amber-400 underline hover:text-amber-300">console.firebase.google.com</a>, log ind med din Google-konto og klik på <b>"Opret et projekt"</b> (gratis).
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">2</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Aktivér Firestore</h3>
+                        <p class="text-xs text-slate-400">
+                            I menuen til venstre: Vælg <b>Build &rarr; Firestore Database</b> &rarr; <b>Create database</b> &rarr; Vælg lokation (fx <i>eur3 (europe-west)</i>) &rarr; Vælg <b>"Start in test mode"</b>.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">3</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Kopier din Web-config</h3>
+                        <p class="text-xs text-slate-400">
+                            Klik på tandhjulet ⚙️ <b>Project Settings</b> &rarr; scroll ned til <i>"Your apps"</i> &rarr; klik på Web-ikonet <b>&lt;/&gt;</b> &rarr; kopier <b>firebaseConfig</b> blokken og indsæt den nedenfor!
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Firebase Config Form -->
+                <form id="firebaseForm" onsubmit="handleSaveFirebaseConfig(event)" class="space-y-4 bg-slate-950 p-5 rounded-xl border border-slate-800">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex justify-between items-center">
+                            <span>Indsæt Firebase Config (JSON eller JavaScript-kode)</span>
+                            <span class="text-[11px] text-amber-400 font-normal"><i class="fa-solid fa-lock mr-1"></i>Gemmes sikkert i browseren</span>
+                        </label>
+                        <textarea id="firebaseConfigInput" rows="5" placeholder='const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "dit-projekt.firebaseapp.com",
+  projectId: "dit-projekt",
+  storageBucket: "dit-projekt.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef..."
+};' class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-emerald-400 focus:outline-none focus:border-amber-500 transition-colors"></textarea>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3 pt-1">
+                        <button type="submit" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2">
+                            <i class="fa-solid fa-bolt"></i>
+                            <span>Gem & Tilslut Firebase</span>
+                        </button>
+                        <button type="button" onclick="uploadCurrentDataToFirebase()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>Overfør Google Sheet data til Firebase</span>
+                        </button>
+                        <button type="button" onclick="disconnectFirebase()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold rounded-xl text-sm transition-all border border-slate-700">
+                            <i class="fa-solid fa-power-off mr-1.5"></i>Afbryd
+                        </button>
+                    </div>
+
+                    <!-- Firebase Live Diagnostics Box -->
+                    <div id="firebaseDiagnosticBox" class="hidden mt-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 space-y-1">
+                        <div class="font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-nodes"></i> Firebase Status:
+                        </div>
+                        <div id="firebaseDiagnosticText" class="font-mono text-[11px] text-slate-400 whitespace-pre-wrap">Klar...</div>
+                    </div>
+                </form>
+            </div>
+
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-link text-emerald-400"></i> Forbind dit Google Sheet
+                        <i class="fa-solid fa-link text-emerald-400"></i> Alternativ: Forbind Google Sheet (Valgfrit)
                     </h2>
                     <span class="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
                         <i class="fa-solid fa-cloud text-[10px]"></i> Automatisk Gemt i Skyen
@@ -712,78 +1162,40 @@
     </div>
 
     <script>
-        // Mock Data Definitions
+        // Real Baseline Data from Google Sheet
         const MOCK_HEALTH_DATA = [
-            { date: '2026-01-05', weight: 84.5, fat: 18.2, muscle: 41.0, vo2: 44 },
-            { date: '2026-01-19', weight: 83.8, fat: 17.8, muscle: 41.3, vo2: 45 },
-            { date: '2026-02-02', weight: 83.1, fat: 17.3, muscle: 41.6, vo2: 45 },
-            { date: '2026-02-16', weight: 82.4, fat: 16.8, muscle: 42.0, vo2: 46 },
-            { date: '2026-03-01', weight: 81.9, fat: 16.4, muscle: 42.2, vo2: 47 }
+            { date: '2026-08-12', weight: 79.55, fat: 20.8, muscle: 73.7, vo2: 40.3 },
+            { date: '2026-08-31', weight: 81.25, fat: 19.9, muscle: 74.6, vo2: 40.3 }
         ];
 
         const MOCK_STRENGTH_DATA = [
-            { date: '2026-01-05', exercise: 'Bænkpres', weight: 70 },
-            { date: '2026-01-15', exercise: 'Bænkpres', weight: 72.5 },
-            { date: '2026-01-25', exercise: 'Bænkpres', weight: 75 },
-            { date: '2026-02-10', exercise: 'Bænkpres', weight: 77.5 },
-            { date: '2026-02-25', exercise: 'Bænkpres', weight: 80 },
-            
-            { date: '2026-01-05', exercise: 'Squat', weight: 85 },
-            { date: '2026-01-18', exercise: 'Squat', weight: 90 },
-            { date: '2026-02-01', exercise: 'Squat', weight: 95 },
-            { date: '2026-02-20', exercise: 'Squat', weight: 100 },
-
-            { date: '2026-01-08', exercise: 'Dødløft', weight: 100 },
-            { date: '2026-01-22', exercise: 'Dødløft', weight: 110 },
-            { date: '2026-02-12', exercise: 'Dødløft', weight: 115 },
-            { date: '2026-02-28', exercise: 'Dødløft', weight: 120 },
-
-            { date: '2026-01-06', exercise: 'Skulderpres', weight: 45 },
-            { date: '2026-01-20', exercise: 'Skulderpres', weight: 47.5 },
-            { date: '2026-02-08', exercise: 'Skulderpres', weight: 50 },
-            { date: '2026-02-22', exercise: 'Skulderpres', weight: 52.5 },
-
-            { date: '2026-01-07', exercise: 'Biceps Curl', weight: 16 },
-            { date: '2026-01-21', exercise: 'Biceps Curl', weight: 18 },
-            { date: '2026-02-11', exercise: 'Biceps Curl', weight: 18 },
-            { date: '2026-02-24', exercise: 'Biceps Curl', weight: 20 },
-
-            { date: '2026-01-07', exercise: 'Triceps Pushdown', weight: 25 },
-            { date: '2026-01-21', exercise: 'Triceps Pushdown', weight: 27.5 },
-            { date: '2026-02-11', exercise: 'Triceps Pushdown', weight: 30 },
-            { date: '2026-02-24', exercise: 'Triceps Pushdown', weight: 32.5 },
-
-            { date: '2026-01-09', exercise: 'Lat Pulldown', weight: 55 },
-            { date: '2026-01-23', exercise: 'Lat Pulldown', weight: 60 },
-            { date: '2026-02-13', exercise: 'Lat Pulldown', weight: 62.5 },
-            { date: '2026-02-27', exercise: 'Lat Pulldown', weight: 65 },
-
-            { date: '2026-01-10', exercise: 'Benpres', weight: 120 },
-            { date: '2026-01-24', exercise: 'Benpres', weight: 130 },
-            { date: '2026-02-14', exercise: 'Benpres', weight: 140 },
-            { date: '2026-02-26', exercise: 'Benpres', weight: 150 },
-
-            { date: '2026-01-11', exercise: 'Cable Flyes', weight: 12.5 },
-            { date: '2026-01-26', exercise: 'Cable Flyes', weight: 15 },
-            { date: '2026-02-15', exercise: 'Cable Flyes', weight: 15 },
-            { date: '2026-02-27', exercise: 'Cable Flyes', weight: 17.5 }
+            { date: '2026-08-14', exercise: 'Preacher Curls', weight: 2.5 },
+            { date: '2026-08-14', exercise: 'Dumbbell Chest Press', weight: 12 },
+            { date: '2026-08-14', exercise: 'Lat Pulldown', weight: 40 },
+            { date: '2026-08-14', exercise: 'Dumbbell Back pull', weight: 12 },
+            { date: '2026-08-14', exercise: 'Shoulder Press', weight: 15 },
+            { date: '2026-08-30', exercise: 'Shoulder Press', weight: 20 },
+            { date: '2026-08-30', exercise: 'Leg press', weight: 70 },
+            { date: '2026-08-30', exercise: 'Leg curl', weight: 20 },
+            { date: '2026-08-30', exercise: 'Planke', weight: 0.1 },
+            { date: '2026-09-16', exercise: 'Leg curl', weight: 25 }
         ];
 
-        const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/17ZBrjWgC8JITwT2MN3xXk8x5hKLfn4L20MLrouGyr8g/edit?usp=drivesdk';
+        const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/17ZBrjWgC8JITwT2MN3xXk8x5hKLfn4L20MLrouGyr8g/edit?usp=sharing';
 
         // Global State
         let sheetHealthData = [];
         let sheetStrengthData = [];
-        window.cloudHealthEntries = [];
-        window.cloudStrengthEntries = [];
-        window.cloudDeletedExercises = [];
-        window.savedSheetUrl = DEFAULT_SHEET_URL;
+        window.cloudHealthEntries = window.cloudHealthEntries || [];
+        window.cloudStrengthEntries = window.cloudStrengthEntries || [];
+        window.cloudDeletedExercises = window.cloudDeletedExercises || [];
+        window.savedSheetUrl = window.savedSheetUrl || DEFAULT_SHEET_URL;
 
         let exerciseToDelete = null;
 
         let healthData = [...MOCK_HEALTH_DATA];
         let strengthData = [...MOCK_STRENGTH_DATA];
-        let selectedExercise = 'Bænkpres';
+        let selectedExercise = 'Leg press';
         let healthChartInstance = null;
         let strengthChartInstance = null;
 
@@ -796,7 +1208,8 @@
 
         // Combines Sheet CSV data + Direct In-App Cloud Entries seamlessly
         window.mergeAndRenderData = function() {
-            const hasRealSheetData = sheetHealthData.length > 0 || sheetStrengthData.length > 0;
+            const hasFirebase = !!window.firebaseDb;
+            const hasRealSheetData = (sheetHealthData.length > 0 || sheetStrengthData.length > 0) && !hasFirebase;
             const hasCloudEntries = (window.cloudHealthEntries && window.cloudHealthEntries.length > 0) ||
                                     (window.cloudStrengthEntries && window.cloudStrengthEntries.length > 0);
 
@@ -805,27 +1218,41 @@
             if (!hasRealSheetData && !hasCloudEntries) {
                 healthData = [...MOCK_HEALTH_DATA];
                 strengthData = [...MOCK_STRENGTH_DATA].filter(item => !deletedList.includes(item.exercise));
-                document.getElementById('dataStatusText').innerText = 'Demo Data';
+                const statusEl = document.getElementById('dataStatusText');
+                if (statusEl) statusEl.innerText = 'Demo Data';
             } else {
-                // Merge Health: Sheet data + Cloud entries (only use real data, never mix with mock data)
+                // Merge Health
                 const healthMap = new Map();
-                sheetHealthData.forEach(item => healthMap.set(item.date, item));
+                if (!hasFirebase) {
+                    sheetHealthData.forEach(item => healthMap.set(item.date, item));
+                }
                 (window.cloudHealthEntries || []).forEach(item => healthMap.set(item.date, item));
-                healthData = Array.from(healthMap.values());
+                healthData = Array.from(healthMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
 
-                // Merge Strength: Sheet data + Cloud entries (excluding deleted exercises)
+                // Merge Strength
                 const strengthMap = new Map();
-                sheetStrengthData
-                    .filter(item => !deletedList.includes(item.exercise))
-                    .forEach(item => strengthMap.set(`${item.date}_${item.exercise}`, item));
+                if (!hasFirebase) {
+                    sheetStrengthData
+                        .filter(item => !deletedList.includes(item.exercise))
+                        .forEach(item => strengthMap.set(`${item.date}_${item.exercise}`, item));
+                }
 
                 (window.cloudStrengthEntries || [])
                     .filter(item => !deletedList.includes(item.exercise))
                     .forEach(item => strengthMap.set(`${item.date}_${item.exercise}`, item));
 
-                strengthData = Array.from(strengthMap.values());
+                strengthData = Array.from(strengthMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
 
-                document.getElementById('dataStatusText').innerText = hasRealSheetData ? 'Live Sky & Sheet' : 'Live Sky Data';
+                const statusEl = document.getElementById('dataStatusText');
+                if (statusEl) {
+                    if (hasFirebase) {
+                        statusEl.innerText = `🔥 Firebase Live (${healthData.length + strengthData.length})`;
+                    } else if (hasRealSheetData) {
+                        statusEl.innerText = `Live Sheet (${sheetHealthData.length + sheetStrengthData.length})`;
+                    } else {
+                        statusEl.innerText = 'Lokal Sky Data';
+                    }
+                }
             }
 
             renderAll();
@@ -865,11 +1292,28 @@
             showToast(`Øvelsen "${name}" er slettet`);
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             initHealthChart();
             initStrengthChart();
 
-            // Support query param ?sheet=... for instant sync on mobile
+            // 1. Check & Auto-Connect Firebase
+            let fbConfig = null;
+            try {
+                const storedFb = localStorage.getItem('fittrack_firebase_config');
+                if (storedFb) fbConfig = JSON.parse(storedFb);
+            } catch (e) {}
+
+            if (!fbConfig && window.DEFAULT_FIREBASE_CONFIG) {
+                fbConfig = window.DEFAULT_FIREBASE_CONFIG;
+            }
+
+            if (fbConfig) {
+                const fbInput = document.getElementById('firebaseConfigInput');
+                if (fbInput) fbInput.value = JSON.stringify(fbConfig, null, 2);
+                await window.initFirebase(fbConfig, false);
+            }
+
+            // 2. Support query param ?sheet=... for instant sync on mobile
             const urlParams = new URLSearchParams(window.location.search);
             const querySheetUrl = urlParams.get('sheet');
             if (querySheetUrl) {
@@ -882,11 +1326,12 @@
                 storedUrl = localStorage.getItem('fittrack_single_sheet_url');
             } catch (e) {}
 
-            const initialUrl = querySheetUrl || window.savedSheetUrl || storedUrl || DEFAULT_SHEET_URL;
+            const initialUrl = querySheetUrl || window.savedSheetUrl || storedUrl;
             const inputEl = document.getElementById('singleSheetUrl');
-            if (inputEl) inputEl.value = initialUrl;
+            if (inputEl && (initialUrl || DEFAULT_SHEET_URL)) inputEl.value = initialUrl || DEFAULT_SHEET_URL;
 
-            if (initialUrl) {
+            // Only fetch Google Sheet by default if Firebase is not connected
+            if (!window.firebaseDb && initialUrl) {
                 window.fetchDataFromSheetUrl(initialUrl, true);
             }
 
@@ -1588,6 +2033,11 @@
         };
 
         function refreshData() {
+            if (window.firebaseDb) {
+                window.mergeAndRenderData();
+                showToast('🔥 Firebase synkroniseres automatisk i realtid!');
+                return;
+            }
             const currentUrl = document.getElementById('singleSheetUrl')?.value?.trim() || window.savedSheetUrl || DEFAULT_SHEET_URL;
             if (currentUrl) {
                 window.fetchDataFromSheetUrl(currentUrl, false);
