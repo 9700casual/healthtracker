@@ -11,24 +11,47 @@
             darkMode: 'class',
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
                     colors: {
-                        brand: {
-                            50: '#f0fdf4',
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                            900: '#064e3b',
+                        dusk: {
+                            950: '#090d14',
+                            900: '#0e141f',
+                            850: '#121a28',
+                            800: '#172234',
+                            700: '#23334d'
                         },
-                        darkbg: '#0f172a',
-                        cardbg: '#1e293b',
-                        cardborder: '#334155'
+                        sage: {
+                            300: '#a7d7c5',
+                            400: '#74c69d',
+                            500: '#52b788',
+                            600: '#388e6e'
+                        },
+                        petroleum: {
+                            300: '#7bdff2',
+                            400: '#38bdf8',
+                            500: '#0284c7'
+                        },
+                        copper: {
+                            300: '#f5cca0',
+                            400: '#e09f67',
+                            500: '#c58b59'
+                        },
+                        lavender: {
+                            300: '#d8b4e2',
+                            400: '#b784a7',
+                            500: '#9d81ba'
+                        }
                     }
                 }
             }
         }
     </script>
-    <!-- Google Fonts Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Google Fonts Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js -->
@@ -151,13 +174,12 @@
                     snapshot.forEach(doc => {
                         const d = doc.data();
                         if (d.date) {
-                            items.push({
-                                date: d.date,
-                                weight: parseFloat(d.weight) || 0,
-                                fat: parseFloat(d.fat) || 0,
-                                muscle: parseFloat(d.muscle) || 0,
-                                vo2: parseFloat(d.vo2) || 0
-                            });
+                            const item = { date: d.date };
+                            if (d.weight !== undefined && d.weight !== null && d.weight !== '') item.weight = parseFloat(d.weight);
+                            if (d.fat !== undefined && d.fat !== null && d.fat !== '') item.fat = parseFloat(d.fat);
+                            if (d.muscle !== undefined && d.muscle !== null && d.muscle !== '') item.muscle = parseFloat(d.muscle);
+                            if (d.vo2 !== undefined && d.vo2 !== null && d.vo2 !== '') item.vo2 = parseFloat(d.vo2);
+                            items.push(item);
                         }
                     });
                     items.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -273,8 +295,11 @@
             // Instant local state update
             if (type === 'health') {
                 const idx = window.cloudHealthEntries.findIndex(e => e.date === entry.date);
-                if (idx >= 0) window.cloudHealthEntries[idx] = entry;
-                else window.cloudHealthEntries.push(entry);
+                if (idx >= 0) {
+                    window.cloudHealthEntries[idx] = { ...window.cloudHealthEntries[idx], ...entry };
+                } else {
+                    window.cloudHealthEntries.push({ ...entry });
+                }
             } else if (type === 'strength') {
                 window.cloudDeletedExercises = window.cloudDeletedExercises.filter(ex => ex !== entry.exercise);
                 const idx = window.cloudStrengthEntries.findIndex(e => e.date === entry.date && e.exercise === entry.exercise);
@@ -296,14 +321,16 @@
             if (window.firebaseDb) {
                 try {
                     if (type === 'health') {
-                        await window.firebaseDb.collection('fittrack_health').doc(entry.date).set({
+                        const updateDoc = {
                             date: entry.date,
-                            weight: parseFloat(entry.weight) || 0,
-                            fat: parseFloat(entry.fat) || 0,
-                            muscle: parseFloat(entry.muscle) || 0,
-                            vo2: parseFloat(entry.vo2) || 0,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
+                        };
+                        if (entry.weight !== undefined) updateDoc.weight = Number(entry.weight);
+                        if (entry.fat !== undefined) updateDoc.fat = Number(entry.fat);
+                        if (entry.muscle !== undefined) updateDoc.muscle = Number(entry.muscle);
+                        if (entry.vo2 !== undefined) updateDoc.vo2 = Number(entry.vo2);
+
+                        await window.firebaseDb.collection('fittrack_health').doc(entry.date).set(updateDoc, { merge: true });
                     } else if (type === 'strength') {
                         const docId = `${entry.date}_${encodeURIComponent(entry.exercise.trim())}`;
                         await window.firebaseDb.collection('fittrack_strength').doc(docId).set({
@@ -504,40 +531,76 @@
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            background-color: #090d14;
+            background-image: 
+                radial-gradient(ellipse at 15% 10%, rgba(2, 132, 199, 0.08) 0%, transparent 45%),
+                radial-gradient(ellipse at 85% 20%, rgba(82, 183, 136, 0.07) 0%, transparent 45%),
+                radial-gradient(ellipse at 50% 85%, rgba(197, 139, 89, 0.05) 0%, transparent 50%);
+            background-attachment: fixed;
+            letter-spacing: -0.015em;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .glass-card {
+            background: rgba(14, 20, 31, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.09);
+        }
+
+        .glass-modal {
+            background: rgba(12, 17, 26, 0.92);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .glass-header {
+            background: rgba(9, 13, 20, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen pb-20 md:pb-12 antialiased">
+<body class="bg-dusk-950 text-slate-100 min-h-screen pb-20 md:pb-12 antialiased">
 
     <!-- Top Header -->
-    <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sm:px-6">
+    <header class="sticky top-0 z-40 glass-header px-4 py-3.5 sm:px-6">
         <div class="max-w-7xl mx-auto flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-sage-500/20 via-petroleum-500/20 to-copper-500/20 border border-white/10 flex items-center justify-center text-sage-400 text-sm shadow-sm">
                     <i class="fa-solid fa-dumbbell"></i>
                 </div>
                 <div>
-                    <h1 class="font-extrabold text-lg sm:text-xl tracking-tight text-white flex items-center gap-2">
-                        FitTrack <span class="text-emerald-400 font-normal text-xs uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">Pro</span>
+                    <h1 class="font-semibold text-lg sm:text-xl tracking-tight text-white flex items-center gap-2">
+                        FitTrack <span class="text-sage-400 font-normal text-[11px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-sage-500/10 border border-sage-500/20">Pro</span>
                     </h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">Dit personlige trænings- & sundhedsdashboard</p>
+                    <p class="text-xs text-slate-400 font-light hidden sm:block">Dit personlige trænings- & sundhedsdashboard</p>
                 </div>
             </div>
 
             <!-- Sync Button & Status Badge -->
             <div class="flex items-center gap-2 sm:gap-3">
-                <div id="dataStatusBadge" class="hidden sm:flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span id="dataStatusText" class="font-medium">Demo Data</span>
+                <div id="dataStatusBadge" class="hidden sm:flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-sage-500/10 text-sage-300 border border-sage-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-sage-400 animate-pulse"></span>
+                    <span id="dataStatusText" class="font-medium text-xs">Demo Data</span>
                 </div>
-                <button onclick="openQuickLogModal()" class="px-3 py-2 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 transition-all">
-                    <i class="fa-solid fa-plus"></i>
+                <button onclick="openQuickLogModal()" class="px-3.5 py-2 sm:px-4 sm:py-2 bg-gradient-to-r from-sage-500 to-teal-600 hover:from-sage-400 hover:to-teal-500 active:scale-95 text-slate-950 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-sage-950/40 border border-sage-400/20 transition-all">
+                    <i class="fa-solid fa-plus text-xs"></i>
                     <span>Log Data</span>
                 </button>
-                <button onclick="refreshData()" title="Opdater data" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all">
-                    <i id="syncIcon" class="fa-solid fa-rotate"></i>
+                <button onclick="refreshData()" title="Opdater data" class="p-2 sm:px-3 sm:py-2 glass-card hover:bg-slate-800/80 active:scale-95 text-slate-300 rounded-xl text-xs font-medium flex items-center gap-2 transition-all">
+                    <i id="syncIcon" class="fa-solid fa-rotate text-xs"></i>
                     <span class="hidden md:inline">Opdater</span>
                 </button>
             </div>
@@ -545,19 +608,19 @@
     </header>
 
     <!-- Navigation Tabs -->
-    <div class="bg-slate-900 border-b border-slate-800 sticky top-[61px] z-30 shadow-md">
+    <div class="glass-header sticky top-[61px] z-30">
         <div class="max-w-7xl mx-auto px-4">
             <nav class="flex gap-2 sm:gap-6 overflow-x-auto no-scrollbar py-2" aria-label="Tabs">
-                <button onclick="switchTab('health')" id="tab-health" class="tab-btn active text-emerald-400 border-emerald-500 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all">
-                    <i class="fa-solid fa-heart-pulse"></i>
+                <button onclick="switchTab('health')" id="tab-health" class="tab-btn active text-sage-300 border-sage-400 flex items-center gap-2 py-2 px-3 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap transition-all">
+                    <i class="fa-solid fa-heart-pulse text-xs"></i>
                     <span>Sundhed & Krop</span>
                 </button>
-                <button onclick="switchTab('strength')" id="tab-strength" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all">
-                    <i class="fa-solid fa-bolt"></i>
+                <button onclick="switchTab('strength')" id="tab-strength" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-3 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap transition-all">
+                    <i class="fa-solid fa-bolt text-xs"></i>
                     <span>Styrke & Øvelser</span>
                 </button>
-                <button onclick="switchTab('setup')" id="tab-setup" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all ml-auto">
-                    <i class="fa-solid fa-database"></i>
+                <button onclick="switchTab('setup')" id="tab-setup" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-3 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap transition-all ml-auto">
+                    <i class="fa-solid fa-database text-xs"></i>
                     <span>Database & Sky</span>
                 </button>
             </nav>
@@ -572,84 +635,84 @@
             
             <!-- Health KPI Cards Grid -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                <!-- Weight Card -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vægt</span>
-                        <div class="p-2 rounded-xl bg-blue-500/10 text-blue-400">
-                            <i class="fa-solid fa-weight-scale"></i>
+                <!-- Weight Card (Petroleum Blå) -->
+                <div class="glass-card rounded-2xl p-4 sm:p-5 relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Vægt</span>
+                        <div class="p-2 rounded-xl bg-petroleum-500/10 text-petroleum-400 border border-petroleum-500/20 group-hover:scale-105 transition-transform">
+                            <i class="fa-solid fa-weight-scale text-xs"></i>
                         </div>
                     </div>
-                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiWeight">-- kg</div>
+                    <div class="text-2xl sm:text-3xl font-medium text-white tracking-tight" id="kpiWeight">-- <span class="text-xs text-slate-400 font-normal">kg</span></div>
                     <div class="mt-2 text-xs flex items-center gap-1" id="kpiWeightDiff">
-                        <span class="text-slate-500">Mangler data</span>
+                        <span class="text-slate-500 font-light">Mangler data</span>
                     </div>
                 </div>
 
-                <!-- Body Fat Card -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Fedtprocent</span>
-                        <div class="p-2 rounded-xl bg-amber-500/10 text-amber-400">
-                            <i class="fa-solid fa-percent"></i>
+                <!-- Body Fat Card (Dæmpet Kobber / Bronze) -->
+                <div class="glass-card rounded-2xl p-4 sm:p-5 relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Fedtprocent</span>
+                        <div class="p-2 rounded-xl bg-copper-500/10 text-copper-400 border border-copper-500/20 group-hover:scale-105 transition-transform">
+                            <i class="fa-solid fa-percent text-xs"></i>
                         </div>
                     </div>
-                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiFat">-- %</div>
+                    <div class="text-2xl sm:text-3xl font-medium text-white tracking-tight" id="kpiFat">-- <span class="text-xs text-slate-400 font-normal">%</span></div>
                     <div class="mt-2 text-xs flex items-center gap-1" id="kpiFatDiff">
-                        <span class="text-slate-500">Mangler data</span>
+                        <span class="text-slate-500 font-light">Mangler data</span>
                     </div>
                 </div>
 
-                <!-- Muscle Card -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Muskelmasse</span>
-                        <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                            <i class="fa-solid fa-child-reaching"></i>
+                <!-- Muscle Card (Støvet Salviegrøn) -->
+                <div class="glass-card rounded-2xl p-4 sm:p-5 relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Muskelmasse</span>
+                        <div class="p-2 rounded-xl bg-sage-500/10 text-sage-400 border border-sage-500/20 group-hover:scale-105 transition-transform">
+                            <i class="fa-solid fa-child-reaching text-xs"></i>
                         </div>
                     </div>
-                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiMuscle">-- %</div>
+                    <div class="text-2xl sm:text-3xl font-medium text-white tracking-tight" id="kpiMuscle">-- <span class="text-xs text-slate-400 font-normal">%</span></div>
                     <div class="mt-2 text-xs flex items-center gap-1" id="kpiMuscleDiff">
-                        <span class="text-slate-500">Mangler data</span>
+                        <span class="text-slate-500 font-light">Mangler data</span>
                     </div>
                 </div>
 
-                <!-- VO2 Max Card -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">VO2 Max</span>
-                        <div class="p-2 rounded-xl bg-purple-500/10 text-purple-400">
-                            <i class="fa-solid fa-lungs"></i>
+                <!-- VO2 Max Card (Dæmpet Lavendel / Ametyst) -->
+                <div class="glass-card rounded-2xl p-4 sm:p-5 relative overflow-hidden group">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">VO2 Max</span>
+                        <div class="p-2 rounded-xl bg-lavender-500/10 text-lavender-400 border border-lavender-500/20 group-hover:scale-105 transition-transform">
+                            <i class="fa-solid fa-lungs text-xs"></i>
                         </div>
                     </div>
-                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiVo2">--</div>
+                    <div class="text-2xl sm:text-3xl font-medium text-white tracking-tight" id="kpiVo2">--</div>
                     <div class="mt-2 text-xs flex items-center gap-1" id="kpiVo2Diff">
-                        <span class="text-slate-500">Mangler data</span>
+                        <span class="text-slate-500 font-light">Mangler data</span>
                     </div>
                 </div>
             </div>
 
             <!-- Main Health Interactive Chart -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+            <div class="glass-card rounded-2xl p-4 sm:p-6">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div>
-                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-emerald-400"></i> Sundhedsudvikling over tid
+                        <h2 class="text-base sm:text-lg font-medium text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-sage-400 text-sm"></i> Sundhedsudvikling over tid
                         </h2>
-                        <p class="text-xs text-slate-400">Klik på målingerne for at slå dem til/fra i grafen</p>
+                        <p class="text-xs text-slate-400 font-light mt-0.5">Vælg målinger for at slå kurver til eller fra</p>
                     </div>
                     <!-- Chart Metric Toggles -->
                     <div class="flex flex-wrap gap-2 text-xs">
-                        <button onclick="toggleMetric('weight')" id="btn-metric-weight" class="px-3 py-1.5 rounded-lg border bg-blue-500/20 text-blue-300 border-blue-500/40 font-medium transition-all">
+                        <button onclick="toggleMetric('weight')" id="btn-metric-weight" class="px-3 py-1.5 rounded-lg border bg-petroleum-500/15 text-petroleum-300 border-petroleum-500/30 font-medium transition-all">
                             Vægt (kg)
                         </button>
-                        <button onclick="toggleMetric('fat')" id="btn-metric-fat" class="px-3 py-1.5 rounded-lg border bg-amber-500/20 text-amber-300 border-amber-500/40 font-medium transition-all">
+                        <button onclick="toggleMetric('fat')" id="btn-metric-fat" class="px-3 py-1.5 rounded-lg border bg-copper-500/15 text-copper-300 border-copper-500/30 font-medium transition-all">
                             Fedt %
                         </button>
-                        <button onclick="toggleMetric('muscle')" id="btn-metric-muscle" class="px-3 py-1.5 rounded-lg border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-medium transition-all">
+                        <button onclick="toggleMetric('muscle')" id="btn-metric-muscle" class="px-3 py-1.5 rounded-lg border bg-sage-500/15 text-sage-300 border-sage-500/30 font-medium transition-all">
                             Muskel %
                         </button>
-                        <button onclick="toggleMetric('vo2')" id="btn-metric-vo2" class="px-3 py-1.5 rounded-lg border bg-purple-500/20 text-purple-300 border-purple-500/40 font-medium transition-all">
+                        <button onclick="toggleMetric('vo2')" id="btn-metric-vo2" class="px-3 py-1.5 rounded-lg border bg-lavender-500/15 text-lavender-300 border-lavender-500/30 font-medium transition-all">
                             VO2 Max
                         </button>
                     </div>
@@ -661,22 +724,22 @@
             </div>
 
             <!-- Health History Table -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
-                <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-list text-slate-400"></i> Historik - Sundhedsdata
+            <div class="glass-card rounded-2xl p-4 sm:p-6">
+                <h3 class="text-base font-medium text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-list text-slate-400 text-xs"></i> Historik - Sundhedsdata
                 </h3>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm text-slate-300">
-                        <thead class="text-xs uppercase bg-slate-800/60 text-slate-400 border-b border-slate-700/50">
+                    <table class="w-full text-left text-xs sm:text-sm text-slate-300">
+                        <thead class="text-[11px] uppercase tracking-wider bg-slate-900/60 text-slate-400 border-b border-white/5">
                             <tr>
-                                <th class="py-3 px-4 rounded-l-lg">Dato</th>
-                                <th class="py-3 px-4">Vægt (kg)</th>
-                                <th class="py-3 px-4">Fedtprocent (%)</th>
-                                <th class="py-3 px-4">Muskelprocent (%)</th>
-                                <th class="py-3 px-4 rounded-r-lg">VO2 Max</th>
+                                <th class="py-3 px-4 rounded-l-lg font-medium">Dato</th>
+                                <th class="py-3 px-4 font-medium">Vægt (kg)</th>
+                                <th class="py-3 px-4 font-medium">Fedtprocent (%)</th>
+                                <th class="py-3 px-4 font-medium">Muskelprocent (%)</th>
+                                <th class="py-3 px-4 rounded-r-lg font-medium">VO2 Max</th>
                             </tr>
                         </thead>
-                        <tbody id="healthTableBody" class="divide-y divide-slate-800/60">
+                        <tbody id="healthTableBody" class="divide-y divide-white/5">
                             <!-- Populated dynamically -->
                         </tbody>
                     </table>
@@ -688,10 +751,10 @@
         <section id="section-strength" class="tab-section hidden space-y-6">
             
             <!-- Exercise Selection Pills -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <div class="glass-card rounded-2xl p-4 sm:p-5">
                 <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Vælg Øvelse (3 x 8 gentagelser)</h2>
-                    <span class="text-xs text-emerald-400 font-medium" id="exerciseCountBadge">9 øvelser fundet</span>
+                    <h2 class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Vælg Øvelse (3 x 8 gentagelser)</h2>
+                    <span class="text-xs text-sage-400 font-light" id="exerciseCountBadge">-- øvelser fundet</span>
                 </div>
                 <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="exercisePillsContainer">
                     <!-- Dynamic exercise chips -->
@@ -701,12 +764,12 @@
             <!-- Exercise Progress Highlight Card -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Selected Exercise Stats -->
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+                <div class="glass-card rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-4">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20" id="currentExerciseTag">Bænkpres</span>
-                                <span class="text-xs text-slate-400 hidden sm:inline">3 x 8 sæt</span>
+                                <span class="text-xs font-semibold uppercase tracking-wider text-sage-300 px-3 py-1 rounded-lg bg-sage-500/10 border border-sage-500/20" id="currentExerciseTag">--</span>
+                                <span class="text-xs text-slate-400 font-light hidden sm:inline">3 x 8 sæt</span>
                             </div>
                             <button onclick="promptDeleteCurrentExercise()" title="Slet denne øvelse" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all flex items-center gap-1.5 active:scale-95">
                                 <i class="fa-solid fa-trash-can text-[11px]"></i>
@@ -716,45 +779,45 @@
                         
                         <div class="space-y-4 my-4">
                             <div>
-                                <p class="text-xs text-slate-400">Nuværende Arbejdsvægt</p>
+                                <p class="text-xs text-slate-400 font-light">Nuværende Arbejdsvægt</p>
                                 <div class="flex items-baseline gap-2">
-                                    <div class="text-4xl font-extrabold text-white tracking-tight" id="exCurrentWeight">-- kg</div>
-                                    <span class="text-xs text-emerald-400/90 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20" id="exLastDate">--</span>
+                                    <div class="text-4xl font-medium text-white tracking-tight" id="exCurrentWeight">-- <span class="text-base text-slate-400 font-normal">kg</span></div>
+                                    <span class="text-xs text-sage-300 font-light bg-sage-500/10 px-2.5 py-0.5 rounded border border-sage-500/20" id="exLastDate">--</span>
                                 </div>
                             </div>
                             
-                            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800">
+                            <div class="grid grid-cols-2 gap-3 pt-4 border-t border-white/5">
                                 <div>
-                                    <p class="text-xs text-slate-400">Personlig Rekord (PR)</p>
-                                    <p class="text-lg font-bold text-amber-400 flex items-center gap-1.5" id="exMaxWeight">
+                                    <p class="text-xs text-slate-400 font-light">Personlig Rekord (PR)</p>
+                                    <p class="text-lg font-medium text-copper-400 flex items-center gap-1.5" id="exMaxWeight">
                                         <i class="fa-solid fa-trophy text-xs"></i> -- kg
                                     </p>
                                 </div>
                                 <div>
-                                    <p class="text-xs text-slate-400">Samlet Fremgang</p>
-                                    <p class="text-lg font-bold text-emerald-400" id="exGain">-- kg</p>
+                                    <p class="text-xs text-slate-400 font-light">Samlet Fremgang</p>
+                                    <p class="text-lg font-medium text-sage-400" id="exGain">-- kg</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-950/60 rounded-xl p-3 border border-slate-800/80 text-xs text-slate-400 flex items-center justify-between gap-2">
-                        <span><i class="fa-solid fa-bolt text-emerald-400 mr-1"></i> Hurtig-opdatering (3x8):</span>
+                    <div class="bg-slate-950/40 rounded-xl p-3 border border-white/5 text-xs text-slate-400 flex items-center justify-between gap-2 mt-4">
+                        <span class="font-light"><i class="fa-solid fa-bolt text-sage-400 mr-1"></i> Hurtig-opdatering:</span>
                         <div class="flex items-center gap-1.5">
-                            <button onclick="quickBumpExercise(-2.5)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-95 transition-all">-2,5 kg</button>
-                            <button onclick="quickBumpExercise(0)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold border border-slate-700 active:scale-95 transition-all" title="Log samme vægt i dag">Gentag</button>
-                            <button onclick="quickBumpExercise(2.5)" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold active:scale-95 transition-all shadow shadow-emerald-500/20">+2,5 kg</button>
+                            <button onclick="quickBumpExercise(-2.5)" class="px-2.5 py-1.5 rounded-lg glass-card hover:bg-slate-800 text-slate-300 font-medium active:scale-95 transition-all">-2,5 kg</button>
+                            <button onclick="quickBumpExercise(0)" class="px-2.5 py-1.5 rounded-lg glass-card hover:bg-slate-800 text-sage-300 font-medium active:scale-95 transition-all" title="Log samme vægt i dag">Gentag</button>
+                            <button onclick="quickBumpExercise(2.5)" class="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-sage-500 to-teal-600 hover:from-sage-400 hover:to-teal-500 text-slate-950 font-semibold active:scale-95 transition-all shadow-sm">+2,5 kg</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Exercise Progress Line Chart -->
-                <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+                <div class="lg:col-span-2 glass-card rounded-2xl p-4 sm:p-6">
                     <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-base font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-emerald-400"></i> Styrkeudvikling
+                        <h3 class="text-base font-medium text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-sage-400 text-sm"></i> Styrkeudvikling
                         </h3>
-                        <span class="text-xs text-slate-400" id="exChartTitle">Bænkpres progression</span>
+                        <span class="text-xs text-slate-400 font-light" id="exChartTitle">Progression</span>
                     </div>
                     <div class="relative w-full h-[260px]">
                         <canvas id="strengthChart"></canvas>
@@ -763,9 +826,9 @@
             </div>
 
             <!-- Grid of All Exercises Overview Cards -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
-                <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-border-all text-slate-400"></i> Overblik over alle øvelser
+            <div class="glass-card rounded-2xl p-4 sm:p-6">
+                <h3 class="text-base font-medium text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-border-all text-slate-400 text-xs"></i> Overblik over alle øvelser
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="allExercisesGrid">
                     <!-- Dynamically populated card grid -->
@@ -777,62 +840,62 @@
         <section id="section-setup" class="tab-section hidden space-y-6">
             
             <!-- FIREBASE CLOUD DATABASE CONNECTOR -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div class="glass-card rounded-2xl p-6 shadow-xl">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                        <div class="w-10 h-10 rounded-xl bg-copper-500/10 border border-copper-500/20 flex items-center justify-center text-copper-400 text-base">
                             <i class="fa-solid fa-fire"></i>
                         </div>
                         <div>
-                            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
+                            <h2 class="text-lg font-medium text-white flex items-center gap-2">
                                 Firebase Cloud Firestore
                             </h2>
-                            <p class="text-xs text-slate-400">Realtidsdatabase direkte forbundet til din app</p>
+                            <p class="text-xs text-slate-400 font-light">Realtidsdatabase direkte forbundet til din app</p>
                         </div>
                     </div>
-                    <div id="firebaseConnectionBadge" class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                        <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                    <div id="firebaseConnectionBadge" class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-slate-900/60 text-slate-400 border border-white/5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                         <span id="firebaseStatusText">Ikke forbundet (Lokal tilstand)</span>
                     </div>
                 </div>
 
-                <p class="text-slate-300 text-sm leading-relaxed mb-6">
-                    Når Firebase er forbundet, gemmes alle registreringer fra <b>+ Log Data</b> og hurtig-justeringer direkte i din egen sikre Google Firebase database i realtid. Du kan logge nede i træningscenteret fra din mobil, og det opdateres øjeblikkeligt her!
+                <p class="text-slate-300 text-sm leading-relaxed mb-6 font-light">
+                    Når Firebase er forbundet, gemmes alle registreringer fra <b class="font-medium text-white">+ Log Data</b> og hurtig-justeringer direkte i din egen sikre Google Firebase database i realtid. Du kan logge nede i træningscenteret fra din mobil, og det opdateres øjeblikkeligt her!
                 </p>
 
                 <!-- 3-Step Setup Guide -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">1</div>
-                        <h3 class="font-bold text-white text-sm mb-1">Opret projekt</h3>
-                        <p class="text-xs text-slate-400">
-                            Gå til <a href="https://console.firebase.google.com" target="_blank" class="text-amber-400 underline hover:text-amber-300">console.firebase.google.com</a>, log ind med din Google-konto og klik på <b>"Opret et projekt"</b> (gratis).
+                    <div class="glass-card rounded-xl p-4">
+                        <div class="w-7 h-7 rounded-lg bg-copper-500/15 text-copper-300 font-medium text-xs flex items-center justify-center mb-3">1</div>
+                        <h3 class="font-medium text-white text-sm mb-1">Opret projekt</h3>
+                        <p class="text-xs text-slate-400 font-light">
+                            Gå til <a href="https://console.firebase.google.com" target="_blank" class="text-copper-300 underline hover:text-copper-200">console.firebase.google.com</a>, log ind med din Google-konto og klik på <b>"Opret et projekt"</b> (gratis).
                         </p>
                     </div>
 
-                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">2</div>
-                        <h3 class="font-bold text-white text-sm mb-1">Aktivér Firestore</h3>
-                        <p class="text-xs text-slate-400">
-                            I menuen til venstre: Vælg <b>Build &rarr; Firestore Database</b> &rarr; <b>Create database</b> &rarr; Vælg lokation (fx <i>eur3 (europe-west)</i>) &rarr; Vælg <b>"Start in test mode"</b>.
+                    <div class="glass-card rounded-xl p-4">
+                        <div class="w-7 h-7 rounded-lg bg-copper-500/15 text-copper-300 font-medium text-xs flex items-center justify-center mb-3">2</div>
+                        <h3 class="font-medium text-white text-sm mb-1">Aktivér Firestore</h3>
+                        <p class="text-xs text-slate-400 font-light">
+                            I menuen til venstre: Vælg <b>Databases & Storage &rarr; Firestore</b> &rarr; <b>Create database</b> &rarr; Vælg lokation &rarr; Vælg <b>"Start in test mode"</b>.
                         </p>
                     </div>
 
-                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">3</div>
-                        <h3 class="font-bold text-white text-sm mb-1">Kopier din Web-config</h3>
-                        <p class="text-xs text-slate-400">
+                    <div class="glass-card rounded-xl p-4">
+                        <div class="w-7 h-7 rounded-lg bg-copper-500/15 text-copper-300 font-medium text-xs flex items-center justify-center mb-3">3</div>
+                        <h3 class="font-medium text-white text-sm mb-1">Kopier din Web-config</h3>
+                        <p class="text-xs text-slate-400 font-light">
                             Klik på tandhjulet ⚙️ <b>Project Settings</b> &rarr; scroll ned til <i>"Your apps"</i> &rarr; klik på Web-ikonet <b>&lt;/&gt;</b> &rarr; kopier <b>firebaseConfig</b> blokken og indsæt den nedenfor!
                         </p>
                     </div>
                 </div>
 
                 <!-- Firebase Config Form -->
-                <form id="firebaseForm" onsubmit="handleSaveFirebaseConfig(event)" class="space-y-4 bg-slate-950 p-5 rounded-xl border border-slate-800">
+                <form id="firebaseForm" onsubmit="handleSaveFirebaseConfig(event)" class="space-y-4 bg-slate-950/60 p-5 rounded-xl border border-white/5">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex justify-between items-center">
+                        <label class="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-2 flex justify-between items-center">
                             <span>Indsæt Firebase Config (JSON eller JavaScript-kode)</span>
-                            <span class="text-[11px] text-amber-400 font-normal"><i class="fa-solid fa-lock mr-1"></i>Gemmes sikkert i browseren</span>
+                            <span class="text-[11px] text-copper-400 font-normal"><i class="fa-solid fa-lock mr-1"></i>Gemmes sikkert i browseren</span>
                         </label>
                         <textarea id="firebaseConfigInput" rows="5" placeholder='const firebaseConfig = {
   apiKey: "AIzaSy...",
@@ -841,26 +904,26 @@
   storageBucket: "dit-projekt.appspot.com",
   messagingSenderId: "123456789",
   appId: "1:123456789:web:abcdef..."
-};' class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-emerald-400 focus:outline-none focus:border-amber-500 transition-colors"></textarea>
+};' class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-xs font-mono text-sage-300 focus:outline-none focus:border-copper-500 transition-colors"></textarea>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-3 pt-1">
-                        <button type="submit" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2">
-                            <i class="fa-solid fa-bolt"></i>
+                        <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-copper-500 to-copper-600 hover:from-copper-400 hover:to-copper-500 active:scale-95 text-slate-950 font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-md shadow-copper-950/30 flex items-center gap-2">
+                            <i class="fa-solid fa-bolt text-xs"></i>
                             <span>Gem & Tilslut Firebase</span>
                         </button>
-                        <button type="button" onclick="uploadCurrentDataToFirebase()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <button type="button" onclick="uploadCurrentDataToFirebase()" class="px-5 py-2.5 bg-gradient-to-r from-sage-600 to-teal-700 hover:from-sage-500 hover:to-teal-600 active:scale-95 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-md shadow-sage-950/30 flex items-center gap-2">
+                            <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
                             <span>Overfør Google Sheet data til Firebase</span>
                         </button>
-                        <button type="button" onclick="disconnectFirebase()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold rounded-xl text-sm transition-all border border-slate-700">
-                            <i class="fa-solid fa-power-off mr-1.5"></i>Afbryd
+                        <button type="button" onclick="disconnectFirebase()" class="px-4 py-2.5 glass-card hover:bg-slate-800 active:scale-95 text-slate-300 font-medium rounded-xl text-xs transition-all">
+                            <i class="fa-solid fa-power-off mr-1.5 text-xs"></i>Afbryd
                         </button>
                     </div>
 
                     <!-- Firebase Live Diagnostics Box -->
-                    <div id="firebaseDiagnosticBox" class="hidden mt-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 space-y-1">
-                        <div class="font-bold text-amber-400 flex items-center gap-1.5">
+                    <div id="firebaseDiagnosticBox" class="hidden mt-3 p-3.5 rounded-xl bg-slate-900/80 border border-white/5 text-xs text-slate-300 space-y-1">
+                        <div class="font-medium text-copper-400 flex items-center gap-1.5">
                             <i class="fa-solid fa-circle-nodes"></i> Firebase Status:
                         </div>
                         <div id="firebaseDiagnosticText" class="font-mono text-[11px] text-slate-400 whitespace-pre-wrap">Klar...</div>
@@ -868,10 +931,10 @@
                 </form>
             </div>
 
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div class="glass-card rounded-2xl p-6 shadow-xl">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-link text-emerald-400"></i> Alternativ: Forbind Google Sheet (Valgfrit)
+                    <h2 class="text-base sm:text-lg font-medium text-white flex items-center gap-2">
+                        <i class="fa-solid fa-link text-petroleum-400 text-xs"></i> Alternativ: Forbind Google Sheet (Valgfrit)
                     </h2>
                     <span class="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
                         <i class="fa-solid fa-cloud text-[10px]"></i> Automatisk Gemt i Skyen
@@ -1013,148 +1076,192 @@
     </main>
 
     <!-- SMART QUICK-LOG MODAL -->
-    <div id="quickLogModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div class="bg-slate-900 border-t sm:border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl animate-fade-in max-h-[92vh] overflow-y-auto">
-            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+    <div id="quickLogModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="glass-modal rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl animate-fade-in max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-4 border-b border-white/5">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <div class="w-8 h-8 rounded-xl bg-sage-500/10 border border-sage-500/20 flex items-center justify-center text-sage-400 text-xs">
                         <i class="fa-solid fa-bolt"></i>
                     </div>
                     <div>
-                        <h3 class="text-base font-extrabold text-white">Intelligent Hurtig-Log</h3>
-                        <p class="text-[11px] text-slate-400">Forudfyldt med dine seneste målinger</p>
+                        <h3 class="text-sm sm:text-base font-medium text-white">Intelligent Hurtig-Log</h3>
+                        <p class="text-[11px] text-slate-400 font-light">Forudfyldt med dine seneste målinger</p>
                     </div>
                 </div>
-                <button onclick="closeQuickLogModal()" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center">
+                <button onclick="closeQuickLogModal()" class="w-7 h-7 rounded-lg glass-card text-slate-400 hover:text-white flex items-center justify-center text-xs">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
 
             <!-- Modal Type Switcher -->
-            <div class="grid grid-cols-2 gap-2 my-4 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                <button type="button" onclick="switchLogModalTab('strength')" id="modalTabStrength" class="py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all">
-                    <i class="fa-solid fa-dumbbell mr-1"></i> Log Styrke (3x8)
+            <div class="grid grid-cols-2 gap-2 my-4 bg-slate-950/60 p-1 rounded-xl border border-white/5">
+                <button type="button" onclick="switchLogModalTab('strength')" id="modalTabStrength" class="py-2 rounded-lg text-xs font-medium bg-sage-500/15 text-sage-300 border border-sage-500/30 transition-all">
+                    <i class="fa-solid fa-dumbbell mr-1 text-[10px]"></i> Log Styrke (3x8)
                 </button>
-                <button type="button" onclick="switchLogModalTab('health')" id="modalTabHealth" class="py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all">
-                    <i class="fa-solid fa-heart-pulse mr-1"></i> Log Sundhed
+                <button type="button" onclick="switchLogModalTab('health')" id="modalTabHealth" class="py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-heart-pulse mr-1 text-[10px]"></i> Log Sundhed
                 </button>
             </div>
 
             <!-- FORM 1: STRENGTH QUICK LOG -->
             <form id="quickStrengthForm" onsubmit="submitQuickStrength(event)" class="space-y-4">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Vælg Øvelse</label>
-                    <select id="logExerciseSelect" onchange="onModalExerciseChange()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">Vælg Øvelse</label>
+                    <select id="logExerciseSelect" onchange="onModalExerciseChange()" class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-sage-500">
                         <!-- Populated dynamically -->
                     </select>
                 </div>
 
                 <!-- Ny Øvelse Input (hvis brugeren vil tilføje en ny) -->
                 <div id="newExerciseWrapper" class="hidden">
-                    <label class="block text-xs font-semibold text-emerald-400 uppercase mb-1.5">Navn på ny øvelse</label>
-                    <input type="text" id="newExerciseName" placeholder="F.eks. Incline Dumbbell Press" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    <label class="block text-[11px] font-medium text-sage-400 uppercase tracking-wider mb-1.5">Navn på ny øvelse</label>
+                    <input type="text" id="newExerciseName" placeholder="F.eks. Incline Dumbbell Press" class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-sage-500">
                 </div>
 
                 <div>
                     <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-slate-400 uppercase">Belastning (kg for 3x8)</span>
-                        <span id="modalPrevExerciseInfo" class="text-emerald-400 font-medium">Seneste: -- kg</span>
+                        <span class="font-medium text-slate-400 uppercase tracking-wider text-[11px]">Belastning (kg for 3x8)</span>
+                        <span id="modalPrevExerciseInfo" class="text-sage-400 font-light text-xs">Seneste: -- kg</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -2.5)" class="px-3.5 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl font-bold text-sm text-slate-200 border border-slate-700">-2,5</button>
-                        <input type="number" step="0.5" id="logStrengthWeight" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xl font-extrabold text-white focus:outline-none focus:border-emerald-500">
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 2.5)" class="px-3.5 py-3 bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 rounded-xl font-bold text-sm text-emerald-300 border border-emerald-500/30">+2,5</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -2.5)" class="px-3.5 py-2.5 glass-card hover:bg-slate-800 active:scale-95 rounded-xl font-medium text-xs text-slate-200">-2,5</button>
+                        <input type="number" step="0.5" id="logStrengthWeight" required class="w-full text-center bg-slate-900/90 border border-white/10 rounded-xl px-4 py-2.5 text-xl font-medium text-white focus:outline-none focus:border-sage-500">
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 2.5)" class="px-3.5 py-2.5 bg-sage-500/15 hover:bg-sage-500/25 active:scale-95 rounded-xl font-medium text-xs text-sage-300 border border-sage-500/30">+2,5</button>
                     </div>
                     <!-- Quick Jump Chips -->
                     <div class="flex gap-1.5 mt-2">
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -5)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-400 rounded-lg border border-slate-800">-5 kg</button>
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -1)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-400 rounded-lg border border-slate-800">-1 kg</button>
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 1)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-300 rounded-lg border border-slate-800">+1 kg</button>
-                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 5)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-emerald-400 rounded-lg border border-slate-800">+5 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -5)" class="flex-1 py-1 glass-card text-[11px] text-slate-400 rounded-lg">-5 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -1)" class="flex-1 py-1 glass-card text-[11px] text-slate-400 rounded-lg">-1 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 1)" class="flex-1 py-1 glass-card text-[11px] text-slate-300 rounded-lg">+1 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 5)" class="flex-1 py-1 glass-card text-[11px] text-sage-300 rounded-lg">+5 kg</button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Dato</label>
-                    <input type="date" id="logStrengthDate" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">Dato</label>
+                    <input type="date" id="logStrengthDate" required class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-sage-500">
                 </div>
 
-                <button type="submit" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-extrabold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check"></i> Gem Træningsløft
+                <button type="submit" class="w-full py-3 bg-gradient-to-r from-sage-500 to-teal-600 hover:from-sage-400 hover:to-teal-500 active:scale-98 text-slate-950 font-semibold rounded-xl text-xs sm:text-sm shadow-md shadow-sage-950/40 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check text-xs"></i> Gem Træningsløft
                 </button>
             </form>
 
             <!-- FORM 2: HEALTH QUICK LOG -->
             <form id="quickHealthForm" onsubmit="submitQuickHealth(event)" class="hidden space-y-4">
-                <div class="grid grid-cols-2 gap-3">
+                <!-- Health Metric Sub-Category Pills -->
+                <div class="flex items-center gap-1.5 p-1 bg-slate-950/70 rounded-xl border border-white/5 overflow-x-auto no-scrollbar">
+                    <button type="button" onclick="setHealthLogCategory('weight')" id="btnHealthCat-weight" class="health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium bg-sage-500/15 text-sage-300 border border-sage-500/30 whitespace-nowrap transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-weight-scale text-[10px]"></i>
+                        <span>Kun Vægt</span>
+                    </button>
+                    <button type="button" onclick="setHealthLogCategory('bodycomp')" id="btnHealthCat-bodycomp" class="health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-transparent whitespace-nowrap transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-percent text-[10px]"></i>
+                        <span>Fedt & Muskel</span>
+                    </button>
+                    <button type="button" onclick="setHealthLogCategory('vo2')" id="btnHealthCat-vo2" class="health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-transparent whitespace-nowrap transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-lungs text-[10px]"></i>
+                        <span>VO2 Max</span>
+                    </button>
+                    <button type="button" onclick="setHealthLogCategory('all')" id="btnHealthCat-all" class="health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-transparent whitespace-nowrap transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-layer-group text-[10px]"></i>
+                        <span>Alt</span>
+                    </button>
+                </div>
+
+                <!-- 1. Weight Section -->
+                <div id="secHealthWeight" class="space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-medium text-slate-400 uppercase tracking-wider text-[11px]">Vægt (kg)</span>
+                        <span id="modalPrevWeightInfo" class="text-petroleum-400 font-light text-xs">Seneste: -- kg</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', -0.2)" class="px-3.5 py-2.5 glass-card hover:bg-slate-800 active:scale-95 rounded-xl font-medium text-xs text-slate-200">-0,2</button>
+                        <input type="number" step="0.1" id="logHealthWeight" class="w-full text-center bg-slate-900/90 border border-white/10 rounded-xl px-4 py-2.5 text-xl font-medium text-white focus:outline-none focus:border-petroleum-500">
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', 0.2)" class="px-3.5 py-2.5 bg-petroleum-500/15 hover:bg-petroleum-500/25 active:scale-95 rounded-xl font-medium text-xs text-petroleum-300 border border-petroleum-500/30">+0,2</button>
+                    </div>
+                    <!-- Quick jumps for weight -->
+                    <div class="flex gap-1.5 pt-0.5">
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', -1)" class="flex-1 py-1 glass-card text-[11px] text-slate-400 rounded-lg">-1 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', -0.5)" class="flex-1 py-1 glass-card text-[11px] text-slate-400 rounded-lg">-0,5 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', 0.5)" class="flex-1 py-1 glass-card text-[11px] text-slate-300 rounded-lg">+0,5 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logHealthWeight', 1)" class="flex-1 py-1 glass-card text-[11px] text-petroleum-300 rounded-lg">+1 kg</button>
+                    </div>
+                </div>
+
+                <!-- 2. Body Composition Section (Fat & Muscle) -->
+                <div id="secHealthBodycomp" class="hidden grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Vægt (kg)</label>
-                        <div class="flex items-center gap-1">
-                            <button type="button" onclick="adjustModalWeight('logHealthWeight', -0.2)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,2</button>
-                            <input type="number" step="0.1" id="logHealthWeight" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
-                            <button type="button" onclick="adjustModalWeight('logHealthWeight', 0.2)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,2</button>
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-medium text-slate-400 uppercase tracking-wider text-[11px]">Fedt (%)</span>
                         </div>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthFat', -0.1)" class="px-2 py-2 glass-card rounded-lg text-xs font-medium">-0,1</button>
+                            <input type="number" step="0.1" id="logHealthFat" class="w-full text-center bg-slate-900/90 border border-white/10 rounded-xl py-2 text-sm font-medium text-white focus:outline-none focus:border-copper-500">
+                            <button type="button" onclick="adjustModalWeight('logHealthFat', 0.1)" class="px-2 py-2 bg-copper-500/15 text-copper-300 border border-copper-500/30 rounded-lg text-xs font-medium">+0,1</button>
+                        </div>
+                        <div id="modalPrevFatInfo" class="text-copper-400/80 font-light text-[10px] mt-1 text-right">Seneste: --%</div>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Fedtprocent (%)</label>
-                        <div class="flex items-center gap-1">
-                            <button type="button" onclick="adjustModalWeight('logHealthFat', -0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,1</button>
-                            <input type="number" step="0.1" id="logHealthFat" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
-                            <button type="button" onclick="adjustModalWeight('logHealthFat', 0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,1</button>
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-medium text-slate-400 uppercase tracking-wider text-[11px]">Muskel (%)</span>
                         </div>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', -0.1)" class="px-2 py-2 glass-card rounded-lg text-xs font-medium">-0,1</button>
+                            <input type="number" step="0.1" id="logHealthMuscle" class="w-full text-center bg-slate-900/90 border border-white/10 rounded-xl py-2 text-sm font-medium text-white focus:outline-none focus:border-sage-500">
+                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', 0.1)" class="px-2 py-2 bg-sage-500/15 text-sage-300 border border-sage-500/30 rounded-lg text-xs font-medium">+0,1</button>
+                        </div>
+                        <div id="modalPrevMuscleInfo" class="text-sage-400/80 font-light text-[10px] mt-1 text-right">Seneste: --%</div>
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Muskelmasse (%)</label>
-                        <div class="flex items-center gap-1">
-                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', -0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,1</button>
-                            <input type="number" step="0.1" id="logHealthMuscle" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
-                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', 0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,1</button>
-                        </div>
+                </div>
+
+                <!-- 3. VO2 Max Section -->
+                <div id="secHealthVo2" class="hidden space-y-1">
+                    <div class="flex justify-between items-center text-xs mb-1">
+                        <span class="font-medium text-slate-400 uppercase tracking-wider text-[11px]">VO2 Max (Kondital)</span>
+                        <span id="modalPrevVo2Info" class="text-lavender-400 font-light text-xs">Seneste: --</span>
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">VO2 Max</label>
-                        <div class="flex items-center gap-1">
-                            <button type="button" onclick="adjustModalWeight('logHealthVo2', -1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-1</button>
-                            <input type="number" step="0.5" id="logHealthVo2" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
-                            <button type="button" onclick="adjustModalWeight('logHealthVo2', 1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+1</button>
-                        </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="adjustModalWeight('logHealthVo2', -0.5)" class="px-3.5 py-2 glass-card hover:bg-slate-800 active:scale-95 rounded-xl font-medium text-xs text-slate-200">-0,5</button>
+                        <input type="number" step="0.1" id="logHealthVo2" class="w-full text-center bg-slate-900/90 border border-white/10 rounded-xl py-2 text-base font-medium text-white focus:outline-none focus:border-lavender-500">
+                        <button type="button" onclick="adjustModalWeight('logHealthVo2', 0.5)" class="px-3.5 py-2 bg-lavender-500/15 hover:bg-lavender-500/25 active:scale-95 rounded-xl font-medium text-xs text-lavender-300 border border-lavender-500/30">+0,5</button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Dato</label>
-                    <input type="date" id="logHealthDate" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">Dato</label>
+                    <input type="date" id="logHealthDate" required class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-sage-500">
                 </div>
 
-                <button type="submit" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-extrabold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check"></i> Gem Sundhedsmåling
+                <button type="submit" id="btnSubmitHealth" class="w-full py-3 bg-gradient-to-r from-sage-500 to-teal-600 hover:from-sage-400 hover:to-teal-500 active:scale-98 text-slate-950 font-semibold rounded-xl text-xs sm:text-sm shadow-md shadow-sage-950/40 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check text-xs"></i> <span id="btnSubmitHealthText">Gem Vægt</span>
                 </button>
             </form>
         </div>
     </div>
 
     <!-- Notification Toast Container -->
-    <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center gap-2">
-        <i class="fa-solid fa-circle-check"></i>
+    <div id="toast" class="fixed bottom-5 right-5 z-50 glass-card bg-slate-900/90 text-white font-medium text-xs sm:text-sm px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center gap-2 border border-sage-500/30">
+        <i class="fa-solid fa-circle-check text-sage-400"></i>
         <span id="toastMessage">Besked gemt!</span>
     </div>
 
     <!-- DELETE CONFIRMATION MODAL -->
-    <div id="deleteModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4 animate-fade-in">
-            <div class="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-xl">
+    <div id="deleteModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="glass-modal rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4 animate-fade-in">
+            <div class="w-10 h-10 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-lg">
                 <i class="fa-solid fa-triangle-exclamation"></i>
             </div>
             <div>
-                <h3 class="text-base font-bold text-white">Slet øvelse?</h3>
-                <p class="text-xs text-slate-400 mt-1">Er du sikker på, at du vil fjerne <span id="deleteModalExerciseName" class="font-bold text-emerald-400"></span> fra dit dashboard?</p>
+                <h3 class="text-sm sm:text-base font-medium text-white">Slet øvelse?</h3>
+                <p class="text-xs text-slate-400 font-light mt-1">Er du sikker på, at du vil fjerne <span id="deleteModalExerciseName" class="font-medium text-sage-300"></span> fra dit dashboard?</p>
             </div>
             <div class="flex gap-2.5 pt-2">
-                <button type="button" onclick="closeDeleteModal()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 active:scale-95 transition-all">
+                <button type="button" onclick="closeDeleteModal()" class="flex-1 py-2.5 rounded-xl glass-card hover:bg-slate-800 text-slate-300 font-medium text-xs active:scale-95 transition-all">
                     Annuller
                 </button>
-                <button type="button" onclick="confirmDeleteExercise()" class="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-500/20 flex items-center justify-center gap-1.5">
-                    <i class="fa-solid fa-trash-can"></i>
+                <button type="button" onclick="confirmDeleteExercise()" class="flex-1 py-2.5 rounded-xl bg-rose-500/80 hover:bg-rose-500 active:scale-95 text-white font-medium text-xs transition-all shadow-md shadow-rose-950/30 flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
                     <span>Ja, slet</span>
                 </button>
             </div>
@@ -1224,9 +1331,12 @@
                 // Merge Health
                 const healthMap = new Map();
                 if (!hasFirebase) {
-                    sheetHealthData.forEach(item => healthMap.set(item.date, item));
+                    sheetHealthData.forEach(item => healthMap.set(item.date, { ...item }));
                 }
-                (window.cloudHealthEntries || []).forEach(item => healthMap.set(item.date, item));
+                (window.cloudHealthEntries || []).forEach(item => {
+                    const existing = healthMap.get(item.date) || {};
+                    healthMap.set(item.date, { ...existing, ...item });
+                });
                 healthData = Array.from(healthMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
 
                 // Merge Strength
@@ -1341,7 +1451,7 @@
         function switchTab(tabName) {
             document.querySelectorAll('.tab-section').forEach(sec => sec.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('text-emerald-400', 'border-emerald-500', 'active');
+                btn.classList.remove('text-sage-300', 'border-sage-400', 'active');
                 btn.classList.add('text-slate-400', 'border-transparent');
             });
 
@@ -1351,7 +1461,7 @@
             const activeBtn = document.getElementById(`tab-${tabName}`);
             if (activeBtn) {
                 activeBtn.classList.remove('text-slate-400', 'border-transparent');
-                activeBtn.classList.add('text-emerald-400', 'border-emerald-500', 'active');
+                activeBtn.classList.add('text-sage-300', 'border-sage-400', 'active');
             }
 
             if (tabName === 'health' && healthChartInstance) {
@@ -1382,84 +1492,103 @@
         function renderHealthTab() {
             if (!healthData || healthData.length === 0) return;
 
-            const sorted = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
-            const latest = sorted[sorted.length - 1];
-            const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+            // Compute KPIs independently for each metric so logging weight doesn't wipe or hide VO2Max/fat/muscle
+            const sortedAll = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            // Update Weight KPI
-            if (latest.weight !== undefined) {
-                document.getElementById('kpiWeight').innerText = `${latest.weight} kg`;
-                if (prev && prev.weight !== undefined) {
+            // Weight KPI
+            const withWeight = sortedAll.filter(d => d.weight !== undefined && d.weight !== null && d.weight > 0);
+            if (withWeight.length > 0) {
+                const latest = withWeight[withWeight.length - 1];
+                const prev = withWeight.length > 1 ? withWeight[withWeight.length - 2] : null;
+                document.getElementById('kpiWeight').innerHTML = `${latest.weight} <span class="text-xs text-slate-400 font-normal">kg</span>`;
+                if (prev) {
                     const diff = (latest.weight - prev.weight).toFixed(1);
-                    const colorClass = diff <= 0 ? 'text-emerald-400' : 'text-rose-400';
+                    const colorClass = diff <= 0 ? 'text-sage-400' : 'text-copper-400';
                     const icon = diff <= 0 ? 'fa-arrow-down' : 'fa-arrow-up';
                     document.getElementById('kpiWeightDiff').innerHTML = `
-                        <span class="${colorClass} flex items-center gap-1 font-semibold">
-                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)} kg
+                        <span class="${colorClass} flex items-center gap-1 font-medium">
+                            <i class="fa-solid ${icon} text-[10px]"></i> ${Math.abs(diff)} kg
                         </span>
-                        <span class="text-slate-500 ml-1">vs forrige</span>
+                        <span class="text-slate-500 font-light ml-1">vs forrige (${prev.date})</span>
                     `;
+                } else {
+                    document.getElementById('kpiWeightDiff').innerHTML = `<span class="text-slate-500 font-light">${latest.date}</span>`;
                 }
             }
 
-            // Update Fat KPI
-            if (latest.fat !== undefined) {
-                document.getElementById('kpiFat').innerText = `${latest.fat}%`;
-                if (prev && prev.fat !== undefined) {
+            // Fat KPI
+            const withFat = sortedAll.filter(d => d.fat !== undefined && d.fat !== null && d.fat > 0);
+            if (withFat.length > 0) {
+                const latest = withFat[withFat.length - 1];
+                const prev = withFat.length > 1 ? withFat[withFat.length - 2] : null;
+                document.getElementById('kpiFat').innerHTML = `${latest.fat} <span class="text-xs text-slate-400 font-normal">%</span>`;
+                if (prev) {
                     const diff = (latest.fat - prev.fat).toFixed(1);
-                    const colorClass = diff <= 0 ? 'text-emerald-400' : 'text-rose-400';
+                    const colorClass = diff <= 0 ? 'text-sage-400' : 'text-copper-400';
                     const icon = diff <= 0 ? 'fa-arrow-down' : 'fa-arrow-up';
                     document.getElementById('kpiFatDiff').innerHTML = `
-                        <span class="${colorClass} flex items-center gap-1 font-semibold">
-                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}%
+                        <span class="${colorClass} flex items-center gap-1 font-medium">
+                            <i class="fa-solid ${icon} text-[10px]"></i> ${Math.abs(diff)}%
                         </span>
-                        <span class="text-slate-500 ml-1">vs forrige</span>
+                        <span class="text-slate-500 font-light ml-1">vs forrige (${prev.date})</span>
                     `;
+                } else {
+                    document.getElementById('kpiFatDiff').innerHTML = `<span class="text-slate-500 font-light">${latest.date}</span>`;
                 }
             }
 
-            // Update Muscle KPI
-            if (latest.muscle !== undefined) {
-                document.getElementById('kpiMuscle').innerText = `${latest.muscle}%`;
-                if (prev && prev.muscle !== undefined) {
+            // Muscle KPI
+            const withMuscle = sortedAll.filter(d => d.muscle !== undefined && d.muscle !== null && d.muscle > 0);
+            if (withMuscle.length > 0) {
+                const latest = withMuscle[withMuscle.length - 1];
+                const prev = withMuscle.length > 1 ? withMuscle[withMuscle.length - 2] : null;
+                document.getElementById('kpiMuscle').innerHTML = `${latest.muscle} <span class="text-xs text-slate-400 font-normal">%</span>`;
+                if (prev) {
                     const diff = (latest.muscle - prev.muscle).toFixed(1);
-                    const colorClass = diff >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                    const colorClass = diff >= 0 ? 'text-sage-400' : 'text-copper-400';
                     const icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
                     document.getElementById('kpiMuscleDiff').innerHTML = `
-                        <span class="${colorClass} flex items-center gap-1 font-semibold">
-                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}%
+                        <span class="${colorClass} flex items-center gap-1 font-medium">
+                            <i class="fa-solid ${icon} text-[10px]"></i> ${Math.abs(diff)}%
                         </span>
-                        <span class="text-slate-500 ml-1">vs forrige</span>
+                        <span class="text-slate-500 font-light ml-1">vs forrige (${prev.date})</span>
                     `;
+                } else {
+                    document.getElementById('kpiMuscleDiff').innerHTML = `<span class="text-slate-500 font-light">${latest.date}</span>`;
                 }
             }
 
-            // Update VO2 Max KPI
-            if (latest.vo2 !== undefined) {
+            // VO2 Max KPI
+            const withVo2 = sortedAll.filter(d => d.vo2 !== undefined && d.vo2 !== null && d.vo2 > 0);
+            if (withVo2.length > 0) {
+                const latest = withVo2[withVo2.length - 1];
+                const prev = withVo2.length > 1 ? withVo2[withVo2.length - 2] : null;
                 document.getElementById('kpiVo2').innerText = latest.vo2;
-                if (prev && prev.vo2 !== undefined) {
+                if (prev) {
                     const diff = (latest.vo2 - prev.vo2).toFixed(1);
-                    const colorClass = diff >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                    const colorClass = diff >= 0 ? 'text-sage-400' : 'text-copper-400';
                     const icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
                     document.getElementById('kpiVo2Diff').innerHTML = `
-                        <span class="${colorClass} flex items-center gap-1 font-semibold">
-                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}
+                        <span class="${colorClass} flex items-center gap-1 font-medium">
+                            <i class="fa-solid ${icon} text-[10px]"></i> ${Math.abs(diff)}
                         </span>
-                        <span class="text-slate-500 ml-1">vs forrige</span>
+                        <span class="text-slate-500 font-light ml-1">vs forrige (${prev.date})</span>
                     `;
+                } else {
+                    document.getElementById('kpiVo2Diff').innerHTML = `<span class="text-slate-500 font-light">${latest.date}</span>`;
                 }
             }
 
             // Populate Table
             const tbody = document.getElementById('healthTableBody');
             if (tbody) {
-                tbody.innerHTML = sorted.slice().reverse().map(row => `
+                tbody.innerHTML = sortedAll.slice().reverse().map(row => `
                     <tr class="hover:bg-slate-800/40 transition-colors">
                         <td class="py-3 px-4 font-medium text-white">${row.date}</td>
-                        <td class="py-3 px-4">${row.weight ? row.weight + ' kg' : '-'}</td>
-                        <td class="py-3 px-4">${row.fat ? row.fat + '%' : '-'}</td>
-                        <td class="py-3 px-4">${row.muscle ? row.muscle + '%' : '-'}</td>
-                        <td class="py-3 px-4">${row.vo2 || '-'}</td>
+                        <td class="py-3 px-4">${row.weight !== undefined && row.weight > 0 ? row.weight + ' kg' : '<span class="text-slate-600">-</span>'}</td>
+                        <td class="py-3 px-4">${row.fat !== undefined && row.fat > 0 ? row.fat + '%' : '<span class="text-slate-600">-</span>'}</td>
+                        <td class="py-3 px-4">${row.muscle !== undefined && row.muscle > 0 ? row.muscle + '%' : '<span class="text-slate-600">-</span>'}</td>
+                        <td class="py-3 px-4">${row.vo2 !== undefined && row.vo2 > 0 ? row.vo2 : '<span class="text-slate-600">-</span>'}</td>
                     </tr>
                 `).join('');
             }
@@ -1505,12 +1634,12 @@
                 pillsContainer.innerHTML = exercises.map(ex => {
                     const isSelected = ex === selectedExercise;
                     return `
-                        <button onclick="selectExercise('${ex}')" class="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+                        <button onclick="selectExercise('${ex}')" class="px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
                             isSelected 
-                                ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/60'
+                                ? 'bg-sage-500/15 text-sage-300 border border-sage-500/30 shadow-sm' 
+                                : 'glass-card text-slate-400 hover:text-slate-200 hover:border-white/10'
                         }">
-                            <i class="fa-solid fa-dumbbell text-[11px]"></i>
+                            <i class="fa-solid fa-dumbbell text-[10px]"></i>
                             <span>${ex}</span>
                         </button>
                     `;
@@ -1529,7 +1658,7 @@
                 const gain = (latest.weight - firstWeight).toFixed(1);
 
                 document.getElementById('currentExerciseTag').innerText = selectedExercise;
-                document.getElementById('exCurrentWeight').innerText = `${latest.weight} kg`;
+                document.getElementById('exCurrentWeight').innerHTML = `${latest.weight} <span class="text-base text-slate-400 font-normal">kg</span>`;
                 document.getElementById('exLastDate').innerText = latest.date;
                 document.getElementById('exMaxWeight').innerHTML = `<i class="fa-solid fa-trophy text-xs mr-1"></i> ${maxWeight} kg`;
                 document.getElementById('exGain').innerText = `${gain >= 0 ? '+' : ''}${gain} kg`;
@@ -1551,26 +1680,26 @@
                     const isSelected = ex === selectedExercise;
 
                     return `
-                        <div onclick="selectExercise('${ex}')" class="bg-slate-950/70 border ${isSelected ? 'border-emerald-500/80 bg-emerald-500/5' : 'border-slate-800 hover:border-slate-700'} rounded-xl p-4 cursor-pointer transition-all relative group">
+                        <div onclick="selectExercise('${ex}')" class="glass-card rounded-2xl p-4 cursor-pointer transition-all relative group ${isSelected ? 'border-sage-500/40 bg-sage-500/5' : 'hover:border-white/10'}">
                             <div class="flex justify-between items-start mb-2">
-                                <h4 class="font-bold text-white text-sm flex items-center gap-1.5">
-                                    <i class="fa-solid fa-dumbbell text-emerald-400 text-xs"></i> ${ex}
+                                <h4 class="font-medium text-white text-sm flex items-center gap-1.5">
+                                    <i class="fa-solid fa-dumbbell text-sage-400 text-xs"></i> ${ex}
                                 </h4>
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">${latestRec.date}</span>
+                                    <span class="text-[10px] bg-slate-900/60 text-slate-400 font-light px-2 py-0.5 rounded border border-white/5">${latestRec.date}</span>
                                     <button onclick="event.stopPropagation(); promptDeleteExercise('${ex}')" title="Slet ${ex}" class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
                                         <i class="fa-solid fa-trash-can text-xs"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="flex items-baseline justify-between mt-3">
+                            <div class="flex items-baseline justify-between mt-3 pt-2 border-t border-white/5">
                                 <div>
-                                    <span class="text-xs text-slate-400 block">Seneste:</span>
-                                    <span class="text-xl font-extrabold text-emerald-400">${latestRec.weight} kg</span>
+                                    <span class="text-[11px] text-slate-400 font-light block">Seneste:</span>
+                                    <span class="text-xl font-medium text-sage-300">${latestRec.weight} <span class="text-xs font-normal text-slate-400">kg</span></span>
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-xs text-slate-400 block">PR:</span>
-                                    <span class="text-sm font-bold text-amber-400">${maxWeight} kg</span>
+                                    <span class="text-[11px] text-slate-400 font-light block">PR:</span>
+                                    <span class="text-sm font-medium text-copper-400 flex items-center justify-end gap-1"><i class="fa-solid fa-trophy text-[10px]"></i> ${maxWeight} kg</span>
                                 </div>
                             </div>
                         </div>
@@ -1594,11 +1723,27 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { backgroundColor: '#0f172a', titleColor: '#f8fafc', bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1 }
+                        tooltip: { 
+                            backgroundColor: 'rgba(12, 17, 26, 0.94)', 
+                            titleColor: '#f1f5f9', 
+                            bodyColor: '#cbd5e1', 
+                            borderColor: 'rgba(255, 255, 255, 0.08)', 
+                            borderWidth: 1,
+                            padding: 12,
+                            cornerRadius: 10,
+                            titleFont: { family: '"Plus Jakarta Sans", sans-serif', weight: '600', size: 12 },
+                            bodyFont: { family: '"Plus Jakarta Sans", sans-serif', weight: '400', size: 12 }
+                        }
                     },
                     scales: {
-                        x: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } },
-                        y: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } }
+                        x: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.03)' }, 
+                            ticks: { color: '#64748b', font: { family: '"Plus Jakarta Sans", sans-serif', size: 11 } } 
+                        },
+                        y: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.03)' }, 
+                            ticks: { color: '#64748b', font: { family: '"Plus Jakarta Sans", sans-serif', size: 11 } } 
+                        }
                     }
                 }
             });
@@ -1615,45 +1760,69 @@
             if (activeMetrics.weight) {
                 datasets.push({
                     label: 'Vægt (kg)',
-                    data: sorted.map(d => d.weight),
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 3,
-                    tension: 0.3,
-                    fill: true
+                    data: sorted.map(d => (d.weight !== undefined && d.weight !== null && d.weight > 0 ? d.weight : null)),
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#090d14',
+                    pointBorderColor: '#38bdf8',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.35,
+                    fill: true,
+                    spanGaps: true
                 });
             }
             if (activeMetrics.fat) {
                 datasets.push({
                     label: 'Fedt (%)',
-                    data: sorted.map(d => d.fat),
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    borderWidth: 3,
-                    tension: 0.3,
-                    fill: true
+                    data: sorted.map(d => (d.fat !== undefined && d.fat !== null && d.fat > 0 ? d.fat : null)),
+                    borderColor: '#e09f67',
+                    backgroundColor: 'rgba(224, 159, 103, 0.08)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#090d14',
+                    pointBorderColor: '#e09f67',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.35,
+                    fill: true,
+                    spanGaps: true
                 });
             }
             if (activeMetrics.muscle) {
                 datasets.push({
                     label: 'Muskel (%)',
-                    data: sorted.map(d => d.muscle),
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    borderWidth: 3,
-                    tension: 0.3,
-                    fill: true
+                    data: sorted.map(d => (d.muscle !== undefined && d.muscle !== null && d.muscle > 0 ? d.muscle : null)),
+                    borderColor: '#74c69d',
+                    backgroundColor: 'rgba(116, 198, 157, 0.08)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#090d14',
+                    pointBorderColor: '#74c69d',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.35,
+                    fill: true,
+                    spanGaps: true
                 });
             }
             if (activeMetrics.vo2) {
                 datasets.push({
                     label: 'VO2 Max',
-                    data: sorted.map(d => d.vo2),
-                    borderColor: '#a855f7',
-                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
-                    borderWidth: 3,
-                    tension: 0.3,
-                    fill: true
+                    data: sorted.map(d => (d.vo2 !== undefined && d.vo2 !== null && d.vo2 > 0 ? d.vo2 : null)),
+                    borderColor: '#b784a7',
+                    backgroundColor: 'rgba(183, 132, 167, 0.08)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#090d14',
+                    pointBorderColor: '#b784a7',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.35,
+                    fill: true,
+                    spanGaps: true
                 });
             }
 
@@ -1674,11 +1843,27 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
-                        tooltip: { backgroundColor: '#0f172a', titleColor: '#f8fafc', bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1 }
+                        tooltip: { 
+                            backgroundColor: 'rgba(12, 17, 26, 0.94)', 
+                            titleColor: '#f1f5f9', 
+                            bodyColor: '#cbd5e1', 
+                            borderColor: 'rgba(255, 255, 255, 0.08)', 
+                            borderWidth: 1,
+                            padding: 12,
+                            cornerRadius: 10,
+                            titleFont: { family: '"Plus Jakarta Sans", sans-serif', weight: '600', size: 12 },
+                            bodyFont: { family: '"Plus Jakarta Sans", sans-serif', weight: '400', size: 12 }
+                        }
                     },
                     scales: {
-                        x: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } },
-                        y: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } }
+                        x: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.03)' }, 
+                            ticks: { color: '#64748b', font: { family: '"Plus Jakarta Sans", sans-serif', size: 11 } } 
+                        },
+                        y: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.03)' }, 
+                            ticks: { color: '#64748b', font: { family: '"Plus Jakarta Sans", sans-serif', size: 11 } } 
+                        }
                     }
                 }
             });
@@ -1699,12 +1884,15 @@
             strengthChartInstance.data.datasets = [{
                 label: `${selectedExercise} (kg)`,
                 data: weights,
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                borderWidth: 3,
-                pointBackgroundColor: '#10b981',
+                borderColor: '#74c69d',
+                backgroundColor: 'rgba(116, 198, 157, 0.12)',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#090d14',
+                pointBorderColor: '#74c69d',
+                pointBorderWidth: 2,
                 pointRadius: 5,
-                tension: 0.3,
+                pointHoverRadius: 7,
+                tension: 0.35,
                 fill: true
             }];
             strengthChartInstance.update();
@@ -2065,8 +2253,52 @@
         }
 
         // --- INTELLIGENT IN-APP LOGGING LOGIC ---
+        let currentHealthCat = 'weight';
+
         function getTodayIso() {
             return new Date().toISOString().split('T')[0];
+        }
+
+        function setHealthLogCategory(cat) {
+            currentHealthCat = cat;
+
+            // Update sub-category buttons
+            ['weight', 'bodycomp', 'vo2', 'all'].forEach(c => {
+                const btn = document.getElementById(`btnHealthCat-${c}`);
+                if (!btn) return;
+                if (c === cat) {
+                    btn.className = 'health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium bg-sage-500/15 text-sage-300 border border-sage-500/30 whitespace-nowrap transition-all flex items-center justify-center gap-1.5 shadow-sm';
+                } else {
+                    btn.className = 'health-cat-btn flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-transparent whitespace-nowrap transition-all flex items-center justify-center gap-1.5';
+                }
+            });
+
+            const secW = document.getElementById('secHealthWeight');
+            const secB = document.getElementById('secHealthBodycomp');
+            const secV = document.getElementById('secHealthVo2');
+            const btnText = document.getElementById('btnSubmitHealthText');
+
+            if (cat === 'weight') {
+                if (secW) secW.classList.remove('hidden');
+                if (secB) secB.classList.add('hidden');
+                if (secV) secV.classList.add('hidden');
+                if (btnText) btnText.innerText = 'Gem Vægt';
+            } else if (cat === 'bodycomp') {
+                if (secW) secW.classList.add('hidden');
+                if (secB) secB.classList.remove('hidden');
+                if (secV) secV.classList.add('hidden');
+                if (btnText) btnText.innerText = 'Gem Fedt & Muskel';
+            } else if (cat === 'vo2') {
+                if (secW) secW.classList.add('hidden');
+                if (secB) secB.classList.add('hidden');
+                if (secV) secV.classList.remove('hidden');
+                if (btnText) btnText.innerText = 'Gem VO2 Max';
+            } else if (cat === 'all') {
+                if (secW) secW.classList.remove('hidden');
+                if (secB) secB.classList.remove('hidden');
+                if (secV) secV.classList.remove('hidden');
+                if (btnText) btnText.innerText = 'Gem Alle Sundhedsmålinger';
+            }
         }
 
         function openQuickLogModal(defaultTab = null) {
@@ -2086,15 +2318,38 @@
 
             onModalExerciseChange();
 
-            // Pre-fill Health form with latest measurements so user only adjusts with +/-
-            const sortedHealth = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
-            if (sortedHealth.length > 0) {
-                const latestH = sortedHealth[sortedHealth.length - 1];
-                document.getElementById('logHealthWeight').value = latestH.weight || 80;
-                document.getElementById('logHealthFat').value = latestH.fat || 16;
-                document.getElementById('logHealthMuscle').value = latestH.muscle || 42;
-                document.getElementById('logHealthVo2').value = latestH.vo2 || 45;
-            }
+            // Pre-fill Health form with latest measurements for each metric independently
+            const withW = healthData.filter(d => d.weight !== undefined && d.weight !== null && d.weight > 0).sort((a,b) => new Date(a.date) - new Date(b.date));
+            const withF = healthData.filter(d => d.fat !== undefined && d.fat !== null && d.fat > 0).sort((a,b) => new Date(a.date) - new Date(b.date));
+            const withM = healthData.filter(d => d.muscle !== undefined && d.muscle !== null && d.muscle > 0).sort((a,b) => new Date(a.date) - new Date(b.date));
+            const withV = healthData.filter(d => d.vo2 !== undefined && d.vo2 !== null && d.vo2 > 0).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+            const lastW = withW.length > 0 ? withW[withW.length - 1] : null;
+            const lastF = withF.length > 0 ? withF[withF.length - 1] : null;
+            const lastM = withM.length > 0 ? withM[withM.length - 1] : null;
+            const lastV = withV.length > 0 ? withV[withV.length - 1] : null;
+
+            const wInput = document.getElementById('logHealthWeight');
+            const fInput = document.getElementById('logHealthFat');
+            const mInput = document.getElementById('logHealthMuscle');
+            const vInput = document.getElementById('logHealthVo2');
+
+            if (wInput) wInput.value = lastW ? lastW.weight : 80;
+            if (fInput) fInput.value = lastF ? lastF.fat : 19.9;
+            if (mInput) mInput.value = lastM ? lastM.muscle : 74.6;
+            if (vInput) vInput.value = lastV ? lastV.vo2 : 40.3;
+
+            const pw = document.getElementById('modalPrevWeightInfo');
+            const pf = document.getElementById('modalPrevFatInfo');
+            const pm = document.getElementById('modalPrevMuscleInfo');
+            const pv = document.getElementById('modalPrevVo2Info');
+
+            if (pw) pw.innerText = lastW ? `Seneste: ${lastW.weight} kg (${lastW.date})` : 'Ingen måling';
+            if (pf) pf.innerText = lastF ? `Seneste: ${lastF.fat}% (${lastF.date})` : 'Ingen måling';
+            if (pm) pm.innerText = lastM ? `Seneste: ${lastM.muscle}% (${lastM.date})` : 'Ingen måling';
+            if (pv) pv.innerText = lastV ? `Seneste: ${lastV.vo2} (${lastV.date})` : 'Ingen måling';
+
+            setHealthLogCategory(currentHealthCat || 'weight');
 
             // Automatically open the tab matching where the user currently is
             const isHealthActive = !document.getElementById('section-health').classList.contains('hidden');
@@ -2114,13 +2369,13 @@
             const hForm = document.getElementById('quickHealthForm');
 
             if (tab === 'strength') {
-                sBtn.className = 'py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all';
-                hBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+                sBtn.className = 'py-2 rounded-lg text-xs font-medium bg-sage-500/15 text-sage-300 border border-sage-500/30 transition-all';
+                hBtn.className = 'py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all';
                 sForm.classList.remove('hidden');
                 hForm.classList.add('hidden');
             } else {
-                hBtn.className = 'py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all';
-                sBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+                hBtn.className = 'py-2 rounded-lg text-xs font-medium bg-sage-500/15 text-sage-300 border border-sage-500/30 transition-all';
+                sBtn.className = 'py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all';
                 hForm.classList.remove('hidden');
                 sForm.classList.add('hidden');
             }
@@ -2182,14 +2437,61 @@
 
         async function submitQuickHealth(e) {
             e.preventDefault();
-            const weight = parseFloat(document.getElementById('logHealthWeight').value);
-            const fat = parseFloat(document.getElementById('logHealthFat').value);
-            const muscle = parseFloat(document.getElementById('logHealthMuscle').value);
-            const vo2 = parseFloat(document.getElementById('logHealthVo2').value);
             const date = document.getElementById('logHealthDate').value || getTodayIso();
+            const entry = { date };
+            let toastSummary = '';
+
+            if (currentHealthCat === 'weight') {
+                const weight = parseFloat(document.getElementById('logHealthWeight').value);
+                if (isNaN(weight) || weight <= 0) {
+                    showToast('Indtast venligst en gyldig vægt', true);
+                    return;
+                }
+                entry.weight = weight;
+                toastSummary = `Vægt (${weight} kg) gemt!`;
+            } else if (currentHealthCat === 'bodycomp') {
+                const fat = parseFloat(document.getElementById('logHealthFat').value);
+                const muscle = parseFloat(document.getElementById('logHealthMuscle').value);
+                if ((isNaN(fat) || fat <= 0) && (isNaN(muscle) || muscle <= 0)) {
+                    showToast('Indtast venligst fedt- eller muskelprocent', true);
+                    return;
+                }
+                if (!isNaN(fat) && fat > 0) entry.fat = fat;
+                if (!isNaN(muscle) && muscle > 0) entry.muscle = muscle;
+                toastSummary = `Fedt (${entry.fat || '-'}%) & Muskel (${entry.muscle || '-'}%) gemt!`;
+            } else if (currentHealthCat === 'vo2') {
+                const vo2 = parseFloat(document.getElementById('logHealthVo2').value);
+                if (isNaN(vo2) || vo2 <= 0) {
+                    showToast('Indtast venligst en gyldig VO2 Max', true);
+                    return;
+                }
+                entry.vo2 = vo2;
+                toastSummary = `VO2 Max (${vo2}) gemt!`;
+            } else { // 'all'
+                const weight = parseFloat(document.getElementById('logHealthWeight').value);
+                const fat = parseFloat(document.getElementById('logHealthFat').value);
+                const muscle = parseFloat(document.getElementById('logHealthMuscle').value);
+                const vo2 = parseFloat(document.getElementById('logHealthVo2').value);
+
+                if (!isNaN(weight) && weight > 0) entry.weight = weight;
+                if (!isNaN(fat) && fat > 0) entry.fat = fat;
+                if (!isNaN(muscle) && muscle > 0) entry.muscle = muscle;
+                if (!isNaN(vo2) && vo2 > 0) entry.vo2 = vo2;
+
+                if (Object.keys(entry).length <= 1) {
+                    showToast('Indtast mindst én sundhedsmåling for at gemme', true);
+                    return;
+                }
+                toastSummary = `Sundhedsmåling gemt!`;
+            }
 
             closeQuickLogModal();
-            showToast(`Sundhedsmåling (${weight} kg) gemt!`);
+            showToast(toastSummary);
+
+            if (window.saveEntryToCloud) {
+                await window.saveEntryToCloud('health', entry);
+            }
+        }
 
             if (window.saveEntryToCloud) {
                 await window.saveEntryToCloud('health', { date, weight, fat, muscle, vo2 });
