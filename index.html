@@ -1,0 +1,2079 @@
+<!DOCTYPE html>
+<html lang="da" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitTrack Pro - Personligt Fitness Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            900: '#064e3b',
+                        },
+                        darkbg: '#0f172a',
+                        cardbg: '#1e293b',
+                        cardborder: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Standalone Cloud & Local Sync Integration (Ready for GitHub Pages) -->
+    <script>
+        // Storage configuration for Standalone / GitHub Pages deployment
+        window.cloudSyncActive = true;
+        window.cloudHealthEntries = [];
+        window.cloudStrengthEntries = [];
+        window.cloudDeletedExercises = [];
+
+        // Load local cache immediately for instant startup
+        try {
+            const cachedHealth = localStorage.getItem('fittrack_local_health');
+            const cachedStrength = localStorage.getItem('fittrack_local_strength');
+            const cachedDeleted = localStorage.getItem('fittrack_deleted_exercises');
+            const cachedSheet = localStorage.getItem('fittrack_single_sheet_url');
+            const cachedWebhook = localStorage.getItem('fittrack_webhook_url');
+
+            if (cachedHealth) window.cloudHealthEntries = JSON.parse(cachedHealth);
+            if (cachedStrength) window.cloudStrengthEntries = JSON.parse(cachedStrength);
+            if (cachedDeleted) window.cloudDeletedExercises = JSON.parse(cachedDeleted);
+            if (cachedSheet) window.savedSheetUrl = cachedSheet;
+            if (cachedWebhook) window.savedWebhookUrl = cachedWebhook;
+        } catch (e) {
+            console.warn("Lokal lagring er begrænset:", e);
+        }
+
+        // Save Sheet & Webhook URLs
+        window.saveSheetUrlToCloud = async function(url, webhookUrl = null) {
+            window.savedSheetUrl = url;
+            if (webhookUrl !== null) window.savedWebhookUrl = webhookUrl;
+            try {
+                localStorage.setItem('fittrack_single_sheet_url', url);
+                if (webhookUrl !== null) localStorage.setItem('fittrack_webhook_url', webhookUrl);
+            } catch (e) {}
+        };
+
+        // Save entry (called from + Log Data & Quick Bump)
+        window.saveEntryToCloud = async function(type, entry) {
+            if (!window.cloudHealthEntries) window.cloudHealthEntries = [];
+            if (!window.cloudStrengthEntries) window.cloudStrengthEntries = [];
+            if (!window.cloudDeletedExercises) window.cloudDeletedExercises = [];
+
+            if (type === 'health') {
+                const idx = window.cloudHealthEntries.findIndex(e => e.date === entry.date);
+                if (idx >= 0) window.cloudHealthEntries[idx] = entry;
+                else window.cloudHealthEntries.push(entry);
+            } else if (type === 'strength') {
+                window.cloudDeletedExercises = window.cloudDeletedExercises.filter(ex => ex !== entry.exercise);
+                const idx = window.cloudStrengthEntries.findIndex(e => e.date === entry.date && e.exercise === entry.exercise);
+                if (idx >= 0) window.cloudStrengthEntries[idx] = entry;
+                else window.cloudStrengthEntries.push(entry);
+            }
+
+            try {
+                localStorage.setItem('fittrack_local_health', JSON.stringify(window.cloudHealthEntries));
+                localStorage.setItem('fittrack_local_strength', JSON.stringify(window.cloudStrengthEntries));
+                localStorage.setItem('fittrack_deleted_exercises', JSON.stringify(window.cloudDeletedExercises));
+            } catch (e) {}
+
+            if (window.mergeAndRenderData) {
+                window.mergeAndRenderData();
+            }
+
+            // If user configured Google Sheet Apps Script Webhook, send row automatically across devices
+            const webhook = window.savedWebhookUrl || localStorage.getItem('fittrack_webhook_url');
+            if (webhook) {
+                try {
+                    await fetch(webhook, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type, ...entry })
+                    });
+                } catch (err) {
+                    console.warn("Kunne ikke sende til Google Sheet Webhook:", err);
+                }
+            }
+        };
+
+        window.deleteExerciseFromCloud = async function(exerciseName) {
+            if (!window.cloudDeletedExercises) window.cloudDeletedExercises = [];
+            if (!window.cloudDeletedExercises.includes(exerciseName)) {
+                window.cloudDeletedExercises.push(exerciseName);
+            }
+            if (window.cloudStrengthEntries) {
+                window.cloudStrengthEntries = window.cloudStrengthEntries.filter(e => e.exercise !== exerciseName);
+            }
+
+            try {
+                localStorage.setItem('fittrack_local_strength', JSON.stringify(window.cloudStrengthEntries || []));
+                localStorage.setItem('fittrack_deleted_exercises', JSON.stringify(window.cloudDeletedExercises));
+            } catch (e) {}
+
+            if (window.mergeAndRenderData) {
+                window.mergeAndRenderData();
+            }
+
+            // Forward delete event to webhook if active
+            const webhook = window.savedWebhookUrl || localStorage.getItem('fittrack_webhook_url');
+            if (webhook) {
+                try {
+                    await fetch(webhook, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'deleteExercise', exercise: exerciseName })
+                    });
+                } catch (err) {}
+            }
+        };
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-20 md:pb-12 antialiased">
+
+    <!-- Top Header -->
+    <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sm:px-6">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-dumbbell"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg sm:text-xl tracking-tight text-white flex items-center gap-2">
+                        FitTrack <span class="text-emerald-400 font-normal text-xs uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">Pro</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Dit personlige trænings- & sundhedsdashboard</p>
+                </div>
+            </div>
+
+            <!-- Sync Button & Status Badge -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div id="dataStatusBadge" class="hidden sm:flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="dataStatusText" class="font-medium">Demo Data</span>
+                </div>
+                <button onclick="openQuickLogModal()" class="px-3 py-2 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 transition-all">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Log Data</span>
+                </button>
+                <button onclick="refreshData()" title="Opdater data" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all">
+                    <i id="syncIcon" class="fa-solid fa-rotate"></i>
+                    <span class="hidden md:inline">Opdater</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-slate-900 border-b border-slate-800 sticky top-[61px] z-30 shadow-md">
+        <div class="max-w-7xl mx-auto px-4">
+            <nav class="flex gap-2 sm:gap-6 overflow-x-auto no-scrollbar py-2" aria-label="Tabs">
+                <button onclick="switchTab('health')" id="tab-health" class="tab-btn active text-emerald-400 border-emerald-500 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all">
+                    <i class="fa-solid fa-heart-pulse"></i>
+                    <span>Sundhed & Krop</span>
+                </button>
+                <button onclick="switchTab('strength')" id="tab-strength" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>Styrke & Øvelser</span>
+                </button>
+                <button onclick="switchTab('setup')" id="tab-setup" class="tab-btn text-slate-400 border-transparent hover:text-slate-200 flex items-center gap-2 py-2 px-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all ml-auto">
+                    <i class="fa-solid fa-file-csv"></i>
+                    <span>Google Sheet Forbindelse</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+
+        <!-- TAB 1: HEALTH METRICS -->
+        <section id="section-health" class="tab-section space-y-6">
+            
+            <!-- Health KPI Cards Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                <!-- Weight Card -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vægt</span>
+                        <div class="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+                            <i class="fa-solid fa-weight-scale"></i>
+                        </div>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiWeight">-- kg</div>
+                    <div class="mt-2 text-xs flex items-center gap-1" id="kpiWeightDiff">
+                        <span class="text-slate-500">Mangler data</span>
+                    </div>
+                </div>
+
+                <!-- Body Fat Card -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Fedtprocent</span>
+                        <div class="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                            <i class="fa-solid fa-percent"></i>
+                        </div>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiFat">-- %</div>
+                    <div class="mt-2 text-xs flex items-center gap-1" id="kpiFatDiff">
+                        <span class="text-slate-500">Mangler data</span>
+                    </div>
+                </div>
+
+                <!-- Muscle Card -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Muskelmasse</span>
+                        <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                            <i class="fa-solid fa-child-reaching"></i>
+                        </div>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiMuscle">-- %</div>
+                    <div class="mt-2 text-xs flex items-center gap-1" id="kpiMuscleDiff">
+                        <span class="text-slate-500">Mangler data</span>
+                    </div>
+                </div>
+
+                <!-- VO2 Max Card -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-lg">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">VO2 Max</span>
+                        <div class="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                            <i class="fa-solid fa-lungs"></i>
+                        </div>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight" id="kpiVo2">--</div>
+                    <div class="mt-2 text-xs flex items-center gap-1" id="kpiVo2Diff">
+                        <span class="text-slate-500">Mangler data</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Health Interactive Chart -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-emerald-400"></i> Sundhedsudvikling over tid
+                        </h2>
+                        <p class="text-xs text-slate-400">Klik på målingerne for at slå dem til/fra i grafen</p>
+                    </div>
+                    <!-- Chart Metric Toggles -->
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <button onclick="toggleMetric('weight')" id="btn-metric-weight" class="px-3 py-1.5 rounded-lg border bg-blue-500/20 text-blue-300 border-blue-500/40 font-medium transition-all">
+                            Vægt (kg)
+                        </button>
+                        <button onclick="toggleMetric('fat')" id="btn-metric-fat" class="px-3 py-1.5 rounded-lg border bg-amber-500/20 text-amber-300 border-amber-500/40 font-medium transition-all">
+                            Fedt %
+                        </button>
+                        <button onclick="toggleMetric('muscle')" id="btn-metric-muscle" class="px-3 py-1.5 rounded-lg border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-medium transition-all">
+                            Muskel %
+                        </button>
+                        <button onclick="toggleMetric('vo2')" id="btn-metric-vo2" class="px-3 py-1.5 rounded-lg border bg-purple-500/20 text-purple-300 border-purple-500/40 font-medium transition-all">
+                            VO2 Max
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative w-full h-[320px] sm:h-[380px]">
+                    <canvas id="healthChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Health History Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+                <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-list text-slate-400"></i> Historik - Sundhedsdata
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="text-xs uppercase bg-slate-800/60 text-slate-400 border-b border-slate-700/50">
+                            <tr>
+                                <th class="py-3 px-4 rounded-l-lg">Dato</th>
+                                <th class="py-3 px-4">Vægt (kg)</th>
+                                <th class="py-3 px-4">Fedtprocent (%)</th>
+                                <th class="py-3 px-4">Muskelprocent (%)</th>
+                                <th class="py-3 px-4 rounded-r-lg">VO2 Max</th>
+                            </tr>
+                        </thead>
+                        <tbody id="healthTableBody" class="divide-y divide-slate-800/60">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: STRENGTH & EXERCISES -->
+        <section id="section-strength" class="tab-section hidden space-y-6">
+            
+            <!-- Exercise Selection Pills -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Vælg Øvelse (3 x 8 gentagelser)</h2>
+                    <span class="text-xs text-emerald-400 font-medium" id="exerciseCountBadge">9 øvelser fundet</span>
+                </div>
+                <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="exercisePillsContainer">
+                    <!-- Dynamic exercise chips -->
+                </div>
+            </div>
+
+            <!-- Exercise Progress Highlight Card -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Selected Exercise Stats -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20" id="currentExerciseTag">Bænkpres</span>
+                                <span class="text-xs text-slate-400 hidden sm:inline">3 x 8 sæt</span>
+                            </div>
+                            <button onclick="promptDeleteCurrentExercise()" title="Slet denne øvelse" class="text-xs px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all flex items-center gap-1.5 active:scale-95">
+                                <i class="fa-solid fa-trash-can text-[11px]"></i>
+                                <span>Slet øvelse</span>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4 my-4">
+                            <div>
+                                <p class="text-xs text-slate-400">Nuværende Arbejdsvægt</p>
+                                <div class="flex items-baseline gap-2">
+                                    <div class="text-4xl font-extrabold text-white tracking-tight" id="exCurrentWeight">-- kg</div>
+                                    <span class="text-xs text-emerald-400/90 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20" id="exLastDate">--</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800">
+                                <div>
+                                    <p class="text-xs text-slate-400">Personlig Rekord (PR)</p>
+                                    <p class="text-lg font-bold text-amber-400 flex items-center gap-1.5" id="exMaxWeight">
+                                        <i class="fa-solid fa-trophy text-xs"></i> -- kg
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-slate-400">Samlet Fremgang</p>
+                                    <p class="text-lg font-bold text-emerald-400" id="exGain">-- kg</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-950/60 rounded-xl p-3 border border-slate-800/80 text-xs text-slate-400 flex items-center justify-between gap-2">
+                        <span><i class="fa-solid fa-bolt text-emerald-400 mr-1"></i> Hurtig-opdatering (3x8):</span>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="quickBumpExercise(-2.5)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-95 transition-all">-2,5 kg</button>
+                            <button onclick="quickBumpExercise(0)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold border border-slate-700 active:scale-95 transition-all" title="Log samme vægt i dag">Gentag</button>
+                            <button onclick="quickBumpExercise(2.5)" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold active:scale-95 transition-all shadow shadow-emerald-500/20">+2,5 kg</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Exercise Progress Line Chart -->
+                <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-emerald-400"></i> Styrkeudvikling
+                        </h3>
+                        <span class="text-xs text-slate-400" id="exChartTitle">Bænkpres progression</span>
+                    </div>
+                    <div class="relative w-full h-[260px]">
+                        <canvas id="strengthChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grid of All Exercises Overview Cards -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+                <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-border-all text-slate-400"></i> Overblik over alle øvelser
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="allExercisesGrid">
+                    <!-- Dynamically populated card grid -->
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: SETUP & GOOGLE SHEETS CONNECTOR -->
+        <section id="section-setup" class="tab-section hidden space-y-6">
+            
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-link text-emerald-400"></i> Forbind dit Google Sheet
+                    </h2>
+                    <span class="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                        <i class="fa-solid fa-cloud text-[10px]"></i> Automatisk Gemt i Skyen
+                    </span>
+                </div>
+                
+                <p class="text-slate-300 text-sm leading-relaxed mb-6">
+                    Indsæt blot det normale link til dit Google Sheet fra adressebaren. Dashboardet gemmer automatisk forbindelsen i skyen, så du aldrig skal indtaste det igen!
+                </p>
+
+                <!-- Step-by-Step Instructions -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center mb-3">1</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Opret Sheet med 2 faner</h3>
+                        <p class="text-xs text-slate-400">
+                            Navngiv den første fane <code class="text-emerald-400 bg-slate-900 px-1 py-0.5 rounded">Sundhed</code> og den anden fane <code class="text-emerald-400 bg-slate-900 px-1 py-0.5 rounded">Styrke</code>.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center mb-3">2</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Gør arket læsbart</h3>
+                        <p class="text-xs text-slate-400">
+                            Klik på den gule <b>Del</b> knap øverst til højre i Google Sheets, og ændr adgang til: <b>"Alle med linket kan se"</b>.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center mb-3">3</div>
+                        <h3 class="font-bold text-white text-sm mb-1">Kopier & Indsæt Link</h3>
+                        <p class="text-xs text-slate-400">
+                            Kopier hele linket fra adressebaren i din browser (fx <i>docs.google.com/spreadsheets/d/...</i>) og indsæt det nedenfor!
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Template Preview Format Boxes -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <!-- Health Template Box -->
+                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2 flex justify-between">
+                            <span>Fane 1: "Sundhed" (Overskrifter i række 1)</span>
+                            <button onclick="copyFormat('health')" class="text-slate-400 hover:text-white text-xs"><i class="fa-regular fa-copy mr-1"></i>Kopier</button>
+                        </h4>
+                        <pre class="bg-slate-900 p-3 rounded-lg text-xs text-slate-300 overflow-x-auto font-mono">Dato,Vaegt,Fedtprocent,Muskelprocent,VO2Max
+2026-01-01,84.5,16.5,41.2,46
+2026-01-15,83.8,16.1,41.5,47</pre>
+                    </div>
+
+                    <!-- Strength Template Box -->
+                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2 flex justify-between">
+                            <span>Fane 2: "Styrke" (Overskrifter i række 1)</span>
+                            <button onclick="copyFormat('strength')" class="text-slate-400 hover:text-white text-xs"><i class="fa-regular fa-copy mr-1"></i>Kopier</button>
+                        </h4>
+                        <pre class="bg-slate-900 p-3 rounded-lg text-xs text-slate-300 overflow-x-auto font-mono">Dato,Ovelse,Belastning
+2026-01-05,Baenkpres,70
+2026-01-05,Squat,85</pre>
+                    </div>
+                </div>
+
+                <!-- Single URL Input Form -->
+                <form id="csvForm" onsubmit="saveSingleSheetUrl(event)" class="space-y-4 bg-slate-950 p-5 rounded-xl border border-slate-800">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex justify-between items-center">
+                            <span>Google Sheet URL</span>
+                            <span class="text-[11px] text-emerald-400 font-normal"><i class="fa-solid fa-shield-halved mr-1"></i>Gemmes automatisk i skyen</span>
+                        </label>
+                        <input type="url" id="singleSheetUrl" value="https://docs.google.com/spreadsheets/d/17ZBrjWgC8JITwT2MN3xXk8x5hKLfn4L20MLrouGyr8g/edit?usp=drive_link" placeholder="https://docs.google.com/spreadsheets/d/1ABC123xyz.../edit" 
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors">
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3 pt-2">
+                        <button type="submit" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 font-bold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20">
+                            <i class="fa-solid fa-floppy-disk mr-2"></i>Gem & Synkroniser
+                        </button>
+                        <button type="button" onclick="useDemoData()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-semibold rounded-xl text-sm transition-all border border-slate-700">
+                            <i class="fa-solid fa-flask mr-2"></i>Nulstil til Demo-data
+                        </button>
+                    </div>
+                    <!-- Live Diagnostics Box -->
+                    <div id="sheetDiagnosticBox" class="hidden mt-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 space-y-2">
+                        <div class="font-bold text-emerald-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-microscope"></i> Forbindelses-status & Kolonne-tjek:
+                        </div>
+                        <div id="sheetDiagnosticText" class="font-mono text-[11px] text-slate-400 whitespace-pre-wrap">Klar...</div>
+                    </div>
+                </form>
+
+                <!-- Optional Google Apps Script 2-Way Sync Box -->
+                <div class="mt-6 bg-slate-950/80 border border-slate-800/80 rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-emerald-400"></i>
+                            Valgfrit: Skriv automatisk tilbage til Google Sheets
+                        </h3>
+                        <button type="button" onclick="document.getElementById('webhookGuide').classList.toggle('hidden')" class="text-xs text-emerald-400 hover:underline font-medium">
+                            Vis/Skjul opsætning
+                        </button>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-3">
+                        Når du bruger <b>"+ Log Data"</b> knappen i appen, gemmes dine tal automatisk i appens egen skylagring med det samme (du behøver slet ikke Google Sheets!). Hvis du <i>også</i> vil have, at appen automatisk skriver nye rækker ind i dit Google Sheet, kan du indsætte en Google Apps Script Web-App URL her:
+                    </p>
+                    <div id="webhookGuide" class="hidden space-y-3 mt-4 pt-4 border-t border-slate-800">
+                        <ol class="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
+                            <li>Åbn dit Google Sheet og klik på <b>Udvidelser</b> &rarr; <b>Apps Script</b>.</li>
+                            <li>Slet koden derinde og indsæt scriptet herunder:</li>
+                        </ol>
+                        <div class="relative">
+                            <pre id="appsScriptCode" class="bg-slate-900 p-3 rounded-lg text-[11px] text-emerald-300 overflow-x-auto font-mono border border-slate-800">function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var data = JSON.parse(e.postData.contents);
+  if (data.type === 'health') {
+    sheet.getSheetByName('Sundhed').appendRow([data.date, data.weight, data.fat, data.muscle, data.vo2]);
+  } else if (data.type === 'strength') {
+    sheet.getSheetByName('Styrke').appendRow([data.date, data.exercise, data.weight]);
+  }
+  return ContentService.createTextOutput("OK");
+}</pre>
+                            <button type="button" onclick="copyAppsScript()" class="absolute top-2 right-2 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded border border-slate-700">
+                                <i class="fa-regular fa-copy mr-1"></i>Kopier Script
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-300">
+                            3. Klik på <b>Implementer (Deploy)</b> &rarr; <b>Ny implementering</b> &rarr; Vælg type: <b>Web-app</b> &rarr; Sæt <i>"Hvem har adgang"</i> til <b>Alle (Anyone)</b> &rarr; Kopier Web-app URL'en og indsæt her:
+                        </p>
+                        <div class="flex gap-2">
+                            <input type="url" id="appsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec" 
+                                class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                            <button type="button" onclick="saveWebhookUrl()" class="px-4 py-2 bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs hover:bg-emerald-400 transition-all">
+                                Gem Webhook
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- SMART QUICK-LOG MODAL -->
+    <div id="quickLogModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-slate-900 border-t sm:border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl animate-fade-in max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <i class="fa-solid fa-bolt"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-extrabold text-white">Intelligent Hurtig-Log</h3>
+                        <p class="text-[11px] text-slate-400">Forudfyldt med dine seneste målinger</p>
+                    </div>
+                </div>
+                <button onclick="closeQuickLogModal()" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Modal Type Switcher -->
+            <div class="grid grid-cols-2 gap-2 my-4 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button type="button" onclick="switchLogModalTab('strength')" id="modalTabStrength" class="py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all">
+                    <i class="fa-solid fa-dumbbell mr-1"></i> Log Styrke (3x8)
+                </button>
+                <button type="button" onclick="switchLogModalTab('health')" id="modalTabHealth" class="py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-heart-pulse mr-1"></i> Log Sundhed
+                </button>
+            </div>
+
+            <!-- FORM 1: STRENGTH QUICK LOG -->
+            <form id="quickStrengthForm" onsubmit="submitQuickStrength(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Vælg Øvelse</label>
+                    <select id="logExerciseSelect" onchange="onModalExerciseChange()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <!-- Ny Øvelse Input (hvis brugeren vil tilføje en ny) -->
+                <div id="newExerciseWrapper" class="hidden">
+                    <label class="block text-xs font-semibold text-emerald-400 uppercase mb-1.5">Navn på ny øvelse</label>
+                    <input type="text" id="newExerciseName" placeholder="F.eks. Incline Dumbbell Press" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-slate-400 uppercase">Belastning (kg for 3x8)</span>
+                        <span id="modalPrevExerciseInfo" class="text-emerald-400 font-medium">Seneste: -- kg</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -2.5)" class="px-3.5 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl font-bold text-sm text-slate-200 border border-slate-700">-2,5</button>
+                        <input type="number" step="0.5" id="logStrengthWeight" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xl font-extrabold text-white focus:outline-none focus:border-emerald-500">
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 2.5)" class="px-3.5 py-3 bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 rounded-xl font-bold text-sm text-emerald-300 border border-emerald-500/30">+2,5</button>
+                    </div>
+                    <!-- Quick Jump Chips -->
+                    <div class="flex gap-1.5 mt-2">
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -5)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-400 rounded-lg border border-slate-800">-5 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', -1)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-400 rounded-lg border border-slate-800">-1 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 1)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-slate-300 rounded-lg border border-slate-800">+1 kg</button>
+                        <button type="button" onclick="adjustModalWeight('logStrengthWeight', 5)" class="flex-1 py-1 bg-slate-800/70 hover:bg-slate-800 text-[11px] text-emerald-400 rounded-lg border border-slate-800">+5 kg</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Dato</label>
+                    <input type="date" id="logStrengthDate" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <button type="submit" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-extrabold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check"></i> Gem Træningsløft
+                </button>
+            </form>
+
+            <!-- FORM 2: HEALTH QUICK LOG -->
+            <form id="quickHealthForm" onsubmit="submitQuickHealth(event)" class="hidden space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Vægt (kg)</label>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthWeight', -0.2)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,2</button>
+                            <input type="number" step="0.1" id="logHealthWeight" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
+                            <button type="button" onclick="adjustModalWeight('logHealthWeight', 0.2)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,2</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Fedtprocent (%)</label>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthFat', -0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,1</button>
+                            <input type="number" step="0.1" id="logHealthFat" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
+                            <button type="button" onclick="adjustModalWeight('logHealthFat', 0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,1</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Muskelmasse (%)</label>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', -0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-0,1</button>
+                            <input type="number" step="0.1" id="logHealthMuscle" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
+                            <button type="button" onclick="adjustModalWeight('logHealthMuscle', 0.1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+0,1</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">VO2 Max</label>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustModalWeight('logHealthVo2', -1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">-1</button>
+                            <input type="number" step="0.5" id="logHealthVo2" required class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-base font-bold text-white">
+                            <button type="button" onclick="adjustModalWeight('logHealthVo2', 1)" class="px-2.5 py-2.5 bg-slate-800 rounded-lg text-xs font-bold">+1</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Dato</label>
+                    <input type="date" id="logHealthDate" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <button type="submit" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-extrabold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check"></i> Gem Sundhedsmåling
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center gap-2">
+        <i class="fa-solid fa-circle-check"></i>
+        <span id="toastMessage">Besked gemt!</span>
+    </div>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="deleteModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4 animate-fade-in">
+            <div class="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-bold text-white">Slet øvelse?</h3>
+                <p class="text-xs text-slate-400 mt-1">Er du sikker på, at du vil fjerne <span id="deleteModalExerciseName" class="font-bold text-emerald-400"></span> fra dit dashboard?</p>
+            </div>
+            <div class="flex gap-2.5 pt-2">
+                <button type="button" onclick="closeDeleteModal()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 active:scale-95 transition-all">
+                    Annuller
+                </button>
+                <button type="button" onclick="confirmDeleteExercise()" class="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-500/20 flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Ja, slet</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock Data Definitions
+        const MOCK_HEALTH_DATA = [
+            { date: '2026-01-05', weight: 84.5, fat: 18.2, muscle: 41.0, vo2: 44 },
+            { date: '2026-01-19', weight: 83.8, fat: 17.8, muscle: 41.3, vo2: 45 },
+            { date: '2026-02-02', weight: 83.1, fat: 17.3, muscle: 41.6, vo2: 45 },
+            { date: '2026-02-16', weight: 82.4, fat: 16.8, muscle: 42.0, vo2: 46 },
+            { date: '2026-03-01', weight: 81.9, fat: 16.4, muscle: 42.2, vo2: 47 }
+        ];
+
+        const MOCK_STRENGTH_DATA = [
+            { date: '2026-01-05', exercise: 'Bænkpres', weight: 70 },
+            { date: '2026-01-15', exercise: 'Bænkpres', weight: 72.5 },
+            { date: '2026-01-25', exercise: 'Bænkpres', weight: 75 },
+            { date: '2026-02-10', exercise: 'Bænkpres', weight: 77.5 },
+            { date: '2026-02-25', exercise: 'Bænkpres', weight: 80 },
+            
+            { date: '2026-01-05', exercise: 'Squat', weight: 85 },
+            { date: '2026-01-18', exercise: 'Squat', weight: 90 },
+            { date: '2026-02-01', exercise: 'Squat', weight: 95 },
+            { date: '2026-02-20', exercise: 'Squat', weight: 100 },
+
+            { date: '2026-01-08', exercise: 'Dødløft', weight: 100 },
+            { date: '2026-01-22', exercise: 'Dødløft', weight: 110 },
+            { date: '2026-02-12', exercise: 'Dødløft', weight: 115 },
+            { date: '2026-02-28', exercise: 'Dødløft', weight: 120 },
+
+            { date: '2026-01-06', exercise: 'Skulderpres', weight: 45 },
+            { date: '2026-01-20', exercise: 'Skulderpres', weight: 47.5 },
+            { date: '2026-02-08', exercise: 'Skulderpres', weight: 50 },
+            { date: '2026-02-22', exercise: 'Skulderpres', weight: 52.5 },
+
+            { date: '2026-01-07', exercise: 'Biceps Curl', weight: 16 },
+            { date: '2026-01-21', exercise: 'Biceps Curl', weight: 18 },
+            { date: '2026-02-11', exercise: 'Biceps Curl', weight: 18 },
+            { date: '2026-02-24', exercise: 'Biceps Curl', weight: 20 },
+
+            { date: '2026-01-07', exercise: 'Triceps Pushdown', weight: 25 },
+            { date: '2026-01-21', exercise: 'Triceps Pushdown', weight: 27.5 },
+            { date: '2026-02-11', exercise: 'Triceps Pushdown', weight: 30 },
+            { date: '2026-02-24', exercise: 'Triceps Pushdown', weight: 32.5 },
+
+            { date: '2026-01-09', exercise: 'Lat Pulldown', weight: 55 },
+            { date: '2026-01-23', exercise: 'Lat Pulldown', weight: 60 },
+            { date: '2026-02-13', exercise: 'Lat Pulldown', weight: 62.5 },
+            { date: '2026-02-27', exercise: 'Lat Pulldown', weight: 65 },
+
+            { date: '2026-01-10', exercise: 'Benpres', weight: 120 },
+            { date: '2026-01-24', exercise: 'Benpres', weight: 130 },
+            { date: '2026-02-14', exercise: 'Benpres', weight: 140 },
+            { date: '2026-02-26', exercise: 'Benpres', weight: 150 },
+
+            { date: '2026-01-11', exercise: 'Cable Flyes', weight: 12.5 },
+            { date: '2026-01-26', exercise: 'Cable Flyes', weight: 15 },
+            { date: '2026-02-15', exercise: 'Cable Flyes', weight: 15 },
+            { date: '2026-02-27', exercise: 'Cable Flyes', weight: 17.5 }
+        ];
+
+        const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/17ZBrjWgC8JITwT2MN3xXk8x5hKLfn4L20MLrouGyr8g/edit?usp=drivesdk';
+
+        // Global State
+        let sheetHealthData = [];
+        let sheetStrengthData = [];
+        window.cloudHealthEntries = [];
+        window.cloudStrengthEntries = [];
+        window.cloudDeletedExercises = [];
+        window.savedSheetUrl = DEFAULT_SHEET_URL;
+
+        let exerciseToDelete = null;
+
+        let healthData = [...MOCK_HEALTH_DATA];
+        let strengthData = [...MOCK_STRENGTH_DATA];
+        let selectedExercise = 'Bænkpres';
+        let healthChartInstance = null;
+        let strengthChartInstance = null;
+
+        let activeMetrics = {
+            weight: true,
+            fat: true,
+            muscle: true,
+            vo2: false
+        };
+
+        // Combines Sheet CSV data + Direct In-App Cloud Entries seamlessly
+        window.mergeAndRenderData = function() {
+            const hasRealSheetData = sheetHealthData.length > 0 || sheetStrengthData.length > 0;
+            const hasCloudEntries = (window.cloudHealthEntries && window.cloudHealthEntries.length > 0) ||
+                                    (window.cloudStrengthEntries && window.cloudStrengthEntries.length > 0);
+
+            const deletedList = window.cloudDeletedExercises || [];
+
+            if (!hasRealSheetData && !hasCloudEntries) {
+                healthData = [...MOCK_HEALTH_DATA];
+                strengthData = [...MOCK_STRENGTH_DATA].filter(item => !deletedList.includes(item.exercise));
+                document.getElementById('dataStatusText').innerText = 'Demo Data';
+            } else {
+                // Merge Health: Sheet data + Cloud entries (only use real data, never mix with mock data)
+                const healthMap = new Map();
+                sheetHealthData.forEach(item => healthMap.set(item.date, item));
+                (window.cloudHealthEntries || []).forEach(item => healthMap.set(item.date, item));
+                healthData = Array.from(healthMap.values());
+
+                // Merge Strength: Sheet data + Cloud entries (excluding deleted exercises)
+                const strengthMap = new Map();
+                sheetStrengthData
+                    .filter(item => !deletedList.includes(item.exercise))
+                    .forEach(item => strengthMap.set(`${item.date}_${item.exercise}`, item));
+
+                (window.cloudStrengthEntries || [])
+                    .filter(item => !deletedList.includes(item.exercise))
+                    .forEach(item => strengthMap.set(`${item.date}_${item.exercise}`, item));
+
+                strengthData = Array.from(strengthMap.values());
+
+                document.getElementById('dataStatusText').innerText = hasRealSheetData ? 'Live Sky & Sheet' : 'Live Sky Data';
+            }
+
+            renderAll();
+        };
+
+        function promptDeleteCurrentExercise() {
+            promptDeleteExercise(selectedExercise);
+        }
+
+        function promptDeleteExercise(exName) {
+            exerciseToDelete = exName;
+            const nameEl = document.getElementById('deleteModalExerciseName');
+            if (nameEl) nameEl.innerText = `"${exName}"`;
+            const modal = document.getElementById('deleteModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            exerciseToDelete = null;
+            const modal = document.getElementById('deleteModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        async function confirmDeleteExercise() {
+            if (!exerciseToDelete) return;
+            const name = exerciseToDelete;
+            closeDeleteModal();
+
+            if (window.deleteExerciseFromCloud) {
+                await window.deleteExerciseFromCloud(name);
+            } else {
+                if (!window.cloudDeletedExercises) window.cloudDeletedExercises = [];
+                window.cloudDeletedExercises.push(name);
+                window.mergeAndRenderData();
+            }
+
+            showToast(`Øvelsen "${name}" er slettet`);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initHealthChart();
+            initStrengthChart();
+
+            // Support query param ?sheet=... for instant sync on mobile
+            const urlParams = new URLSearchParams(window.location.search);
+            const querySheetUrl = urlParams.get('sheet');
+            if (querySheetUrl) {
+                window.savedSheetUrl = querySheetUrl;
+                try { localStorage.setItem('fittrack_single_sheet_url', querySheetUrl); } catch (e) {}
+            }
+
+            let storedUrl = null;
+            try {
+                storedUrl = localStorage.getItem('fittrack_single_sheet_url');
+            } catch (e) {}
+
+            const initialUrl = querySheetUrl || window.savedSheetUrl || storedUrl || DEFAULT_SHEET_URL;
+            const inputEl = document.getElementById('singleSheetUrl');
+            if (inputEl) inputEl.value = initialUrl;
+
+            if (initialUrl) {
+                window.fetchDataFromSheetUrl(initialUrl, true);
+            }
+
+            renderAll();
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-section').forEach(sec => sec.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-emerald-400', 'border-emerald-500', 'active');
+                btn.classList.add('text-slate-400', 'border-transparent');
+            });
+
+            const activeSection = document.getElementById(`section-${tabName}`);
+            if (activeSection) activeSection.classList.remove('hidden');
+
+            const activeBtn = document.getElementById(`tab-${tabName}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-400', 'border-transparent');
+                activeBtn.classList.add('text-emerald-400', 'border-emerald-500', 'active');
+            }
+
+            if (tabName === 'health' && healthChartInstance) {
+                setTimeout(() => healthChartInstance.resize(), 50);
+            } else if (tabName === 'strength' && strengthChartInstance) {
+                setTimeout(() => strengthChartInstance.resize(), 50);
+            }
+        }
+
+        function renderAll() {
+            renderHealthTab();
+            renderStrengthTab();
+        }
+
+        function toggleMetric(metric) {
+            activeMetrics[metric] = !activeMetrics[metric];
+            const btn = document.getElementById(`btn-metric-${metric}`);
+            if (btn) {
+                if (activeMetrics[metric]) {
+                    btn.classList.remove('opacity-40');
+                } else {
+                    btn.classList.add('opacity-40');
+                }
+            }
+            updateHealthChart();
+        }
+
+        function renderHealthTab() {
+            if (!healthData || healthData.length === 0) return;
+
+            const sorted = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const latest = sorted[sorted.length - 1];
+            const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+
+            // Update Weight KPI
+            if (latest.weight !== undefined) {
+                document.getElementById('kpiWeight').innerText = `${latest.weight} kg`;
+                if (prev && prev.weight !== undefined) {
+                    const diff = (latest.weight - prev.weight).toFixed(1);
+                    const colorClass = diff <= 0 ? 'text-emerald-400' : 'text-rose-400';
+                    const icon = diff <= 0 ? 'fa-arrow-down' : 'fa-arrow-up';
+                    document.getElementById('kpiWeightDiff').innerHTML = `
+                        <span class="${colorClass} flex items-center gap-1 font-semibold">
+                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)} kg
+                        </span>
+                        <span class="text-slate-500 ml-1">vs forrige</span>
+                    `;
+                }
+            }
+
+            // Update Fat KPI
+            if (latest.fat !== undefined) {
+                document.getElementById('kpiFat').innerText = `${latest.fat}%`;
+                if (prev && prev.fat !== undefined) {
+                    const diff = (latest.fat - prev.fat).toFixed(1);
+                    const colorClass = diff <= 0 ? 'text-emerald-400' : 'text-rose-400';
+                    const icon = diff <= 0 ? 'fa-arrow-down' : 'fa-arrow-up';
+                    document.getElementById('kpiFatDiff').innerHTML = `
+                        <span class="${colorClass} flex items-center gap-1 font-semibold">
+                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}%
+                        </span>
+                        <span class="text-slate-500 ml-1">vs forrige</span>
+                    `;
+                }
+            }
+
+            // Update Muscle KPI
+            if (latest.muscle !== undefined) {
+                document.getElementById('kpiMuscle').innerText = `${latest.muscle}%`;
+                if (prev && prev.muscle !== undefined) {
+                    const diff = (latest.muscle - prev.muscle).toFixed(1);
+                    const colorClass = diff >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                    const icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                    document.getElementById('kpiMuscleDiff').innerHTML = `
+                        <span class="${colorClass} flex items-center gap-1 font-semibold">
+                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}%
+                        </span>
+                        <span class="text-slate-500 ml-1">vs forrige</span>
+                    `;
+                }
+            }
+
+            // Update VO2 Max KPI
+            if (latest.vo2 !== undefined) {
+                document.getElementById('kpiVo2').innerText = latest.vo2;
+                if (prev && prev.vo2 !== undefined) {
+                    const diff = (latest.vo2 - prev.vo2).toFixed(1);
+                    const colorClass = diff >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                    const icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                    document.getElementById('kpiVo2Diff').innerHTML = `
+                        <span class="${colorClass} flex items-center gap-1 font-semibold">
+                            <i class="fa-solid ${icon}"></i> ${Math.abs(diff)}
+                        </span>
+                        <span class="text-slate-500 ml-1">vs forrige</span>
+                    `;
+                }
+            }
+
+            // Populate Table
+            const tbody = document.getElementById('healthTableBody');
+            if (tbody) {
+                tbody.innerHTML = sorted.slice().reverse().map(row => `
+                    <tr class="hover:bg-slate-800/40 transition-colors">
+                        <td class="py-3 px-4 font-medium text-white">${row.date}</td>
+                        <td class="py-3 px-4">${row.weight ? row.weight + ' kg' : '-'}</td>
+                        <td class="py-3 px-4">${row.fat ? row.fat + '%' : '-'}</td>
+                        <td class="py-3 px-4">${row.muscle ? row.muscle + '%' : '-'}</td>
+                        <td class="py-3 px-4">${row.vo2 || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+            updateHealthChart();
+        }
+
+        function selectExercise(exName) {
+            selectedExercise = exName;
+            renderStrengthTab();
+        }
+
+        function renderStrengthTab() {
+            if (!strengthData || strengthData.length === 0) {
+                const pillsContainer = document.getElementById('exercisePillsContainer');
+                if (pillsContainer) pillsContainer.innerHTML = '<span class="text-xs text-slate-500 py-2">Ingen øvelser tilgængelige. Tryk på "+ Log Data" for at oprette en.</span>';
+                const gridContainer = document.getElementById('allExercisesGrid');
+                if (gridContainer) gridContainer.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500 text-xs">Ingen øvelser fundet.</div>';
+                document.getElementById('currentExerciseTag').innerText = '--';
+                document.getElementById('exCurrentWeight').innerText = '-- kg';
+                document.getElementById('exLastDate').innerText = '--';
+                document.getElementById('exMaxWeight').innerText = '-- kg';
+                document.getElementById('exGain').innerText = '-- kg';
+                if (strengthChartInstance) {
+                    strengthChartInstance.data.labels = [];
+                    strengthChartInstance.data.datasets = [];
+                    strengthChartInstance.update();
+                }
+                return;
+            }
+
+            const exercises = Array.from(new Set(strengthData.map(d => d.exercise)));
+            const badge = document.getElementById('exerciseCountBadge');
+            if (badge) badge.innerText = `${exercises.length} øvelser fundet`;
+
+            if (!exercises.includes(selectedExercise) && exercises.length > 0) {
+                selectedExercise = exercises[0];
+            }
+
+            // Render Exercise Pills
+            const pillsContainer = document.getElementById('exercisePillsContainer');
+            if (pillsContainer) {
+                pillsContainer.innerHTML = exercises.map(ex => {
+                    const isSelected = ex === selectedExercise;
+                    return `
+                        <button onclick="selectExercise('${ex}')" class="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+                            isSelected 
+                                ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
+                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/60'
+                        }">
+                            <i class="fa-solid fa-dumbbell text-[11px]"></i>
+                            <span>${ex}</span>
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            // Selected Exercise Highlight Card
+            const currentExData = strengthData
+                .filter(d => d.exercise === selectedExercise)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            if (currentExData.length > 0) {
+                const latest = currentExData[currentExData.length - 1];
+                const maxWeight = Math.max(...currentExData.map(d => d.weight));
+                const firstWeight = currentExData[0].weight;
+                const gain = (latest.weight - firstWeight).toFixed(1);
+
+                document.getElementById('currentExerciseTag').innerText = selectedExercise;
+                document.getElementById('exCurrentWeight').innerText = `${latest.weight} kg`;
+                document.getElementById('exLastDate').innerText = latest.date;
+                document.getElementById('exMaxWeight').innerHTML = `<i class="fa-solid fa-trophy text-xs mr-1"></i> ${maxWeight} kg`;
+                document.getElementById('exGain').innerText = `${gain >= 0 ? '+' : ''}${gain} kg`;
+                document.getElementById('exChartTitle').innerText = `${selectedExercise} progression`;
+            }
+
+            // Render All Exercises Grid Cards
+            const gridContainer = document.getElementById('allExercisesGrid');
+            if (gridContainer) {
+                gridContainer.innerHTML = exercises.map(ex => {
+                    const exHistory = strengthData
+                        .filter(d => d.exercise === ex)
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+                    
+                    if (exHistory.length === 0) return '';
+
+                    const latestRec = exHistory[exHistory.length - 1];
+                    const maxWeight = Math.max(...exHistory.map(d => d.weight));
+                    const isSelected = ex === selectedExercise;
+
+                    return `
+                        <div onclick="selectExercise('${ex}')" class="bg-slate-950/70 border ${isSelected ? 'border-emerald-500/80 bg-emerald-500/5' : 'border-slate-800 hover:border-slate-700'} rounded-xl p-4 cursor-pointer transition-all relative group">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-white text-sm flex items-center gap-1.5">
+                                    <i class="fa-solid fa-dumbbell text-emerald-400 text-xs"></i> ${ex}
+                                </h4>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">${latestRec.date}</span>
+                                    <button onclick="event.stopPropagation(); promptDeleteExercise('${ex}')" title="Slet ${ex}" class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex items-baseline justify-between mt-3">
+                                <div>
+                                    <span class="text-xs text-slate-400 block">Seneste:</span>
+                                    <span class="text-xl font-extrabold text-emerald-400">${latestRec.weight} kg</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xs text-slate-400 block">PR:</span>
+                                    <span class="text-sm font-bold text-amber-400">${maxWeight} kg</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            updateStrengthChart();
+        }
+
+        function initHealthChart() {
+            const ctx = document.getElementById('healthChart')?.getContext('2d');
+            if (!ctx) return;
+
+            healthChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: '#0f172a', titleColor: '#f8fafc', bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1 }
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+            updateHealthChart();
+        }
+
+        function updateHealthChart() {
+            if (!healthChartInstance || !healthData || healthData.length === 0) return;
+
+            const sorted = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const labels = sorted.map(d => d.date);
+            const datasets = [];
+
+            if (activeMetrics.weight) {
+                datasets.push({
+                    label: 'Vægt (kg)',
+                    data: sorted.map(d => d.weight),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true
+                });
+            }
+            if (activeMetrics.fat) {
+                datasets.push({
+                    label: 'Fedt (%)',
+                    data: sorted.map(d => d.fat),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true
+                });
+            }
+            if (activeMetrics.muscle) {
+                datasets.push({
+                    label: 'Muskel (%)',
+                    data: sorted.map(d => d.muscle),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true
+                });
+            }
+            if (activeMetrics.vo2) {
+                datasets.push({
+                    label: 'VO2 Max',
+                    data: sorted.map(d => d.vo2),
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true
+                });
+            }
+
+            healthChartInstance.data.labels = labels;
+            healthChartInstance.data.datasets = datasets;
+            healthChartInstance.update();
+        }
+
+        function initStrengthChart() {
+            const ctx = document.getElementById('strengthChart')?.getContext('2d');
+            if (!ctx) return;
+
+            strengthChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: '#0f172a', titleColor: '#f8fafc', bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1 }
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: 'rgba(51, 65, 85, 0.4)' }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+            updateStrengthChart();
+        }
+
+        function updateStrengthChart() {
+            if (!strengthChartInstance || !strengthData || strengthData.length === 0) return;
+
+            const filtered = strengthData
+                .filter(d => d.exercise === selectedExercise)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const labels = filtered.map(d => d.date);
+            const weights = filtered.map(d => d.weight);
+
+            strengthChartInstance.data.labels = labels;
+            strengthChartInstance.data.datasets = [{
+                label: `${selectedExercise} (kg)`,
+                data: weights,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                borderWidth: 3,
+                pointBackgroundColor: '#10b981',
+                pointRadius: 5,
+                tension: 0.3,
+                fill: true
+            }];
+            strengthChartInstance.update();
+        }
+
+        // Extract Google Sheet ID from URL
+        function extractSheetId(inputUrl) {
+            if (!inputUrl) return null;
+            const match = inputUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            return match ? match[1] : inputUrl.trim();
+        }
+
+        function extractGid(inputUrl) {
+            if (!inputUrl) return null;
+            const match = inputUrl.match(/[#&?]gid=([0-9]+)/);
+            return match ? match[1] : null;
+        }
+
+        function fetchSheetViaJsonp(sheetId, querySuffix) {
+            return new Promise((resolve) => {
+                const callbackName = 'gvizCb_' + Math.random().toString(36).substring(2, 10);
+                const script = document.createElement('script');
+                let timer = setTimeout(() => {
+                    cleanup();
+                    resolve(null);
+                }, 5000);
+
+                function cleanup() {
+                    clearTimeout(timer);
+                    try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[callbackName] = function(response) {
+                    cleanup();
+                    if (!response || response.status === 'error' || !response.table) {
+                        resolve(null);
+                        return;
+                    }
+                    const rawCols = response.table.cols || [];
+                    const numCols = rawCols.length;
+                    const cols = rawCols.map(c => (c && c.label) ? String(c.label).trim() : '');
+                    const rows = response.table.rows || [];
+                    const csvLines = [];
+
+                    // Only push header line if at least one column has a real label
+                    const hasRealLabels = cols.some(label => label !== '');
+                    if (hasRealLabels) {
+                        csvLines.push(cols.map(c => `"${c.replace(/"/g, '""')}"`).join(','));
+                    }
+
+                    for (const r of rows) {
+                        if (!r || !r.c) continue;
+                        const rowCells = [];
+                        for (let cIdx = 0; cIdx < Math.max(numCols, r.c.length); cIdx++) {
+                            const cell = r.c[cIdx];
+                            if (!cell) {
+                                rowCells.push('""');
+                                continue;
+                            }
+                            let val = '';
+                            if (typeof cell.v === 'number') {
+                                val = String(cell.v);
+                            } else if (cell.v !== undefined && cell.v !== null && String(cell.v).startsWith('Date(')) {
+                                const strV = String(cell.v);
+                                const dateMatch = strV.match(/^Date\((\d+),(\d+),(\d+)/);
+                                if (dateMatch) {
+                                    const y = dateMatch[1];
+                                    const m = String(parseInt(dateMatch[2], 10) + 1).padStart(2, '0');
+                                    const d = String(dateMatch[3]).padStart(2, '0');
+                                    val = `${y}-${m}-${d}`;
+                                } else {
+                                    val = cell.f || strV;
+                                }
+                            } else if (cell.f !== undefined && cell.f !== null && String(cell.f).trim() !== '') {
+                                val = String(cell.f).trim();
+                            } else if (cell.v !== undefined && cell.v !== null) {
+                                val = String(cell.v).trim();
+                            }
+
+                            // If cell is already a raw CSV line (contains comma or semicolon) and it's single column, don't double-quote escape it
+                            if (numCols <= 1 && (val.includes(',') || val.includes(';'))) {
+                                rowCells.push(val);
+                            } else {
+                                rowCells.push(`"${String(val).replace(/"/g, '""')}"`);
+                            }
+                        }
+                        if (rowCells.some(c => c !== '""' && c !== '')) {
+                            csvLines.push(rowCells.join(','));
+                        }
+                    }
+                    resolve(csvLines.join('\n'));
+                };
+
+                script.onerror = () => {
+                    cleanup();
+                    resolve(null);
+                };
+
+                script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=responseHandler:${callbackName}${querySuffix}`;
+                document.body.appendChild(script);
+            });
+        }
+
+        // Discover tabs from public htmlview if custom tab names are used
+        async function discoverSheetGids(sheetId) {
+            const gids = new Set(['0']);
+            const htmlViewUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/htmlview`;
+            const proxyUrls = [
+                htmlViewUrl,
+                `https://corsproxy.io/?${encodeURIComponent(htmlViewUrl)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(htmlViewUrl)}`
+            ];
+            for (const url of proxyUrls) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        const html = await res.text();
+                        const matches = html.matchAll(/gid["'=:\s]+([0-9]{1,12})/gi);
+                        for (const m of matches) {
+                            if (m[1]) gids.add(m[1]);
+                        }
+                        if (gids.size > 1) break;
+                    }
+                } catch (e) {}
+            }
+            return Array.from(gids);
+        }
+
+        // Fetch CSV data for a tab with JSONP (no CORS issues), direct fetch, and proxy fallbacks
+        async function fetchSheetTabData(sheetId, tabOrGid) {
+            const isGid = typeof tabOrGid === 'object' && tabOrGid.gid !== undefined;
+            const querySuffix = isGid
+                ? `&gid=${encodeURIComponent(tabOrGid.gid)}`
+                : (tabOrGid ? `&sheet=${encodeURIComponent(tabOrGid)}` : '');
+
+            // Attempt 1: Native Google Visualization JSONP (bypasses CORS and sandboxed iframes completely)
+            try {
+                const jsonpText = await fetchSheetViaJsonp(sheetId, querySuffix);
+                if (jsonpText && jsonpText.trim().length > 0) {
+                    return jsonpText;
+                }
+            } catch (e) {}
+
+            const urlsToTry = [
+                `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${querySuffix}`,
+                `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${querySuffix}`
+            ];
+
+            for (const url of urlsToTry) {
+                // Attempt 2: Direct fetch
+                try {
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        const text = await response.text();
+                        if (text && !text.trim().startsWith('<!DOCTYPE') && !text.trim().startsWith('<html')) {
+                            return text;
+                        }
+                    }
+                } catch (e) {}
+
+                // Attempt 3: CORS Proxy Fallbacks
+                const proxyUrls = [
+                    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+                ];
+
+                for (const proxyUrl of proxyUrls) {
+                    try {
+                        const proxyRes = await fetch(proxyUrl);
+                        if (proxyRes.ok) {
+                            const text = await proxyRes.text();
+                            if (text && !text.trim().startsWith('<!DOCTYPE') && !text.trim().startsWith('<html')) {
+                                return text;
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+            return null;
+        }
+
+        async function saveSingleSheetUrl(event) {
+            event.preventDefault();
+            const inputUrl = document.getElementById('singleSheetUrl').value.trim();
+
+            if (!inputUrl) {
+                showToast('Indtast venligst et Google Sheet link!', true);
+                return;
+            }
+
+            window.savedSheetUrl = inputUrl;
+            try {
+                localStorage.setItem('fittrack_single_sheet_url', inputUrl);
+            } catch (e) {
+                console.warn('localStorage er blokeret i denne visning, bruger skylagring.');
+            }
+
+            if (window.saveSheetUrlToCloud) {
+                await window.saveSheetUrlToCloud(inputUrl);
+            }
+
+            showToast('Synkroniserer med dit Google Sheet...');
+            await window.fetchDataFromSheetUrl(inputUrl, false);
+        }
+
+        window.fetchDataFromSheetUrl = async function(inputUrl, silentMode = false) {
+            const sheetId = extractSheetId(inputUrl);
+            const explicitGid = extractGid(inputUrl);
+            const diagBox = document.getElementById('sheetDiagnosticBox');
+            const diagText = document.getElementById('sheetDiagnosticText');
+
+            if (!sheetId) {
+                if (!silentMode) showToast('Ugyldigt Google Sheet link', true);
+                return;
+            }
+
+            if (diagBox && diagText) {
+                diagBox.classList.remove('hidden');
+                diagText.innerText = `Forbinder til ark ID: ${sheetId}...`;
+            }
+
+            const syncIcon = document.getElementById('syncIcon');
+            if (syncIcon) syncIcon.classList.add('fa-spin');
+
+            let foundHealth = [];
+            let foundStrength = [];
+            let rawPreviewLines = [];
+            let mappingDebugInfo = [];
+
+            try {
+                // Build candidate list: explicit gid + default first tab + common names
+                const candidates = [];
+                if (explicitGid) candidates.push({ gid: explicitGid });
+                candidates.push('', { gid: '0' }, 'Sundhed', 'Styrke', 'Data', 'Ark1', 'Ark2', 'Sheet1', 'Sheet2', 'Øvelser', 'Ovelser', 'Træning', 'Traening', 'Vægt', 'Vaegt', 'Krop');
+
+                const fetchedTexts = new Set();
+
+                for (const candidate of candidates) {
+                    const csvText = await fetchSheetTabData(sheetId, candidate);
+                    if (csvText && !fetchedTexts.has(csvText)) {
+                        fetchedTexts.add(csvText);
+                        if (rawPreviewLines.length < 4) {
+                            rawPreviewLines.push(...csvText.split(/\r?\n/).slice(0, 3));
+                        }
+
+                        const smart = smartClassifyAndParseCsv(csvText);
+                        if (smart.debugSummary) mappingDebugInfo.push(smart.debugSummary);
+                        if (smart.healthRows.length > 0) {
+                            foundHealth.push(...smart.healthRows);
+                        }
+                        if (smart.strengthRows.length > 0) {
+                            foundStrength.push(...smart.strengthRows);
+                        }
+                    }
+                    if (foundHealth.length > 0 && foundStrength.length > 0 && fetchedTexts.size >= 2) break;
+                }
+
+                // If second tab wasn't matched by standard names, auto-discover GIDs from the sheet
+                if (foundHealth.length === 0 || foundStrength.length === 0) {
+                    const discoveredGids = await discoverSheetGids(sheetId);
+                    for (const gid of discoveredGids) {
+                        const csvText = await fetchSheetTabData(sheetId, { gid });
+                        if (csvText && !fetchedTexts.has(csvText)) {
+                            fetchedTexts.add(csvText);
+                            if (rawPreviewLines.length < 4) {
+                                rawPreviewLines.push(...csvText.split(/\r?\n/).slice(0, 3));
+                            }
+                            const smart = smartClassifyAndParseCsv(csvText);
+                            if (smart.debugSummary) mappingDebugInfo.push(smart.debugSummary);
+                            if (smart.healthRows.length > 0) foundHealth.push(...smart.healthRows);
+                            if (smart.strengthRows.length > 0) foundStrength.push(...smart.strengthRows);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Fejl ved opdatering af Sheet data:', e.message);
+            }
+
+            if (syncIcon) syncIcon.classList.remove('fa-spin');
+
+            // Deduplicate parsed rows
+            const uniqueHealth = new Map();
+            foundHealth.forEach(r => uniqueHealth.set(`${r.date}_${r.weight}_${r.fat}_${r.muscle}_${r.vo2}`, r));
+            foundHealth = Array.from(uniqueHealth.values());
+
+            const uniqueStrength = new Map();
+            foundStrength.forEach(r => uniqueStrength.set(`${r.date}_${r.exercise}_${r.weight}`, r));
+            foundStrength = Array.from(uniqueStrength.values());
+
+            const healthSuccess = foundHealth.length > 0;
+            const strengthSuccess = foundStrength.length > 0;
+
+            if (healthSuccess) sheetHealthData = foundHealth;
+            if (strengthSuccess) sheetStrengthData = foundStrength;
+
+            if (healthSuccess || strengthSuccess) {
+                if (!healthSuccess) sheetHealthData = [];
+                if (!strengthSuccess) sheetStrengthData = [];
+
+                window.mergeAndRenderData();
+                document.getElementById('dataStatusText').innerText = `Live Sheet (${sheetHealthData.length + sheetStrengthData.length} rækker)`;
+                if (diagText) {
+                    const sampleH = sheetHealthData[sheetHealthData.length - 1];
+                    const sampleS = sheetStrengthData[sheetStrengthData.length - 1];
+                    diagText.innerText = `✅ Forbundet! Fandt ${sheetHealthData.length} sundhedsrækker og ${sheetStrengthData.length} styrkerækker.\n` +
+                        (sampleH ? `Seneste Sundhed læst: Dato=${sampleH.date}, Vægt=${sampleH.weight}kg, Fedt=${sampleH.fat}%, Muskel=${sampleH.muscle}%, VO2=${sampleH.vo2}\n` : '') +
+                        (sampleS ? `Seneste Styrke læst: Dato=${sampleS.date}, Øvelse="${sampleS.exercise}", Belastning=${sampleS.weight}kg\n` : '') +
+                        (mappingDebugInfo.length > 0 ? `\nKolonne-tjek:\n${mappingDebugInfo.join('\n')}` : '');
+                }
+                if (!silentMode) {
+                    showToast(`Hentet ${sheetHealthData.length} sundheds- og ${sheetStrengthData.length} styrkerækker fra dit Sheet!`);
+                }
+            } else {
+                if (diagText) {
+                    if (rawPreviewLines.length > 0) {
+                        diagText.innerText = `⚠️ Fandt arket, men kunne ikke genkende kolonneformatet. Første linjer i arket:\n${rawPreviewLines.slice(0, 3).join('\n')}`;
+                    } else {
+                        diagText.innerText = `⚠️ Kunne ikke læse data fra arket (ID: ${sheetId}). Tjek at arket ikke er tomt, og at deling er sat til "Alle med linket".`;
+                    }
+                }
+                if (!silentMode) {
+                    showToast('Kunne ikke genkende rækker i arket endnu. Se statusboksen under URL-feltet.', true);
+                }
+            }
+        };
+
+        function refreshData() {
+            const currentUrl = document.getElementById('singleSheetUrl')?.value?.trim() || window.savedSheetUrl || DEFAULT_SHEET_URL;
+            if (currentUrl) {
+                window.fetchDataFromSheetUrl(currentUrl, false);
+            } else {
+                window.mergeAndRenderData();
+                showToast('Data er opdateret fra skyen!');
+            }
+        }
+
+        function useDemoData() {
+            const inputEl = document.getElementById('singleSheetUrl');
+            if (inputEl) inputEl.value = '';
+            window.savedSheetUrl = '';
+            sheetHealthData = [];
+            sheetStrengthData = [];
+            window.cloudHealthEntries = [];
+            window.cloudStrengthEntries = [];
+
+            healthData = [...MOCK_HEALTH_DATA];
+            strengthData = [...MOCK_STRENGTH_DATA];
+
+            document.getElementById('dataStatusText').innerText = 'Demo Data';
+            showToast('Viser nu Demo Data');
+            renderAll();
+        }
+
+        // --- INTELLIGENT IN-APP LOGGING LOGIC ---
+        function getTodayIso() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        function openQuickLogModal(defaultTab = null) {
+            const modal = document.getElementById('quickLogModal');
+            if (!modal) return;
+
+            // Populate today's date
+            const today = getTodayIso();
+            document.getElementById('logStrengthDate').value = today;
+            document.getElementById('logHealthDate').value = today;
+
+            // Populate exercises dropdown + option to create new
+            const exercises = Array.from(new Set(strengthData.map(d => d.exercise)));
+            const selectEl = document.getElementById('logExerciseSelect');
+            selectEl.innerHTML = exercises.map(ex => `<option value="${ex}" ${ex === selectedExercise ? 'selected' : ''}>${ex}</option>`).join('') +
+                `<option value="__NEW__">+ Tilføj ny øvelse...</option>`;
+
+            onModalExerciseChange();
+
+            // Pre-fill Health form with latest measurements so user only adjusts with +/-
+            const sortedHealth = [...healthData].sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (sortedHealth.length > 0) {
+                const latestH = sortedHealth[sortedHealth.length - 1];
+                document.getElementById('logHealthWeight').value = latestH.weight || 80;
+                document.getElementById('logHealthFat').value = latestH.fat || 16;
+                document.getElementById('logHealthMuscle').value = latestH.muscle || 42;
+                document.getElementById('logHealthVo2').value = latestH.vo2 || 45;
+            }
+
+            // Automatically open the tab matching where the user currently is
+            const isHealthActive = !document.getElementById('section-health').classList.contains('hidden');
+            switchLogModalTab(defaultTab || (isHealthActive ? 'health' : 'strength'));
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeQuickLogModal() {
+            document.getElementById('quickLogModal')?.classList.add('hidden');
+        }
+
+        function switchLogModalTab(tab) {
+            const sBtn = document.getElementById('modalTabStrength');
+            const hBtn = document.getElementById('modalTabHealth');
+            const sForm = document.getElementById('quickStrengthForm');
+            const hForm = document.getElementById('quickHealthForm');
+
+            if (tab === 'strength') {
+                sBtn.className = 'py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all';
+                hBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+                sForm.classList.remove('hidden');
+                hForm.classList.add('hidden');
+            } else {
+                hBtn.className = 'py-2 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-all';
+                sBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+                hForm.classList.remove('hidden');
+                sForm.classList.add('hidden');
+            }
+        }
+
+        function onModalExerciseChange() {
+            const val = document.getElementById('logExerciseSelect').value;
+            const newWrapper = document.getElementById('newExerciseWrapper');
+            if (val === '__NEW__') {
+                newWrapper.classList.remove('hidden');
+                document.getElementById('logStrengthWeight').value = 50;
+                document.getElementById('modalPrevExerciseInfo').innerText = 'Ny øvelse';
+                return;
+            }
+            newWrapper.classList.add('hidden');
+
+            const hist = strengthData
+                .filter(d => d.exercise === val)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            if (hist.length > 0) {
+                const last = hist[hist.length - 1];
+                document.getElementById('logStrengthWeight').value = last.weight;
+                document.getElementById('modalPrevExerciseInfo').innerText = `Seneste: ${last.weight} kg (${last.date})`;
+            }
+        }
+
+        function adjustModalWeight(inputId, delta) {
+            const el = document.getElementById(inputId);
+            if (!el) return;
+            const current = parseFloat(el.value) || 0;
+            const updated = Math.max(0, Number((current + delta).toFixed(1)));
+            el.value = updated;
+        }
+
+        async function submitQuickStrength(e) {
+            e.preventDefault();
+            let exName = document.getElementById('logExerciseSelect').value;
+            if (exName === '__NEW__') {
+                exName = document.getElementById('newExerciseName').value.trim();
+                if (!exName) {
+                    showToast('Indtast venligst navnet på øvelsen', true);
+                    return;
+                }
+            }
+            const weight = parseFloat(document.getElementById('logStrengthWeight').value);
+            const date = document.getElementById('logStrengthDate').value || getTodayIso();
+
+            if (!weight || weight <= 0) return;
+
+            selectedExercise = exName;
+            closeQuickLogModal();
+            showToast(`${exName}: ${weight} kg gemt!`);
+
+            if (window.saveEntryToCloud) {
+                await window.saveEntryToCloud('strength', { date, exercise: exName, weight });
+            }
+        }
+
+        async function submitQuickHealth(e) {
+            e.preventDefault();
+            const weight = parseFloat(document.getElementById('logHealthWeight').value);
+            const fat = parseFloat(document.getElementById('logHealthFat').value);
+            const muscle = parseFloat(document.getElementById('logHealthMuscle').value);
+            const vo2 = parseFloat(document.getElementById('logHealthVo2').value);
+            const date = document.getElementById('logHealthDate').value || getTodayIso();
+
+            closeQuickLogModal();
+            showToast(`Sundhedsmåling (${weight} kg) gemt!`);
+
+            if (window.saveEntryToCloud) {
+                await window.saveEntryToCloud('health', { date, weight, fat, muscle, vo2 });
+            }
+        }
+
+        // One-Tap Quick Bump directly from the Strength Dashboard card
+        async function quickBumpExercise(deltaKg) {
+            const hist = strengthData
+                .filter(d => d.exercise === selectedExercise)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const baseWeight = hist.length > 0 ? hist[hist.length - 1].weight : 50;
+            const newWeight = Math.max(0, Number((baseWeight + deltaKg).toFixed(1)));
+            const today = getTodayIso();
+
+            showToast(`${selectedExercise}: ${newWeight} kg registreret for i dag!`);
+            if (window.saveEntryToCloud) {
+                await window.saveEntryToCloud('strength', { date: today, exercise: selectedExercise, weight: newWeight });
+            }
+        }
+
+        async function saveWebhookUrl() {
+            const webhookUrl = document.getElementById('appsScriptUrl').value.trim();
+            const sheetUrl = document.getElementById('singleSheetUrl').value.trim();
+            if (window.saveSheetUrlToCloud) {
+                await window.saveSheetUrlToCloud(sheetUrl, webhookUrl);
+            }
+            showToast('Google Sheet Webhook gemt i skyen!');
+        }
+
+        function copyAppsScript() {
+            const code = document.getElementById('appsScriptCode').innerText;
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('Apps Script kopieret!');
+        }
+
+        // Helper to parse numbers in Danish or US format
+        function parseNum(val) {
+            if (val === undefined || val === null || val === '') return 0;
+            let s = String(val).trim();
+            // Remove common units and labels
+            s = s.replace(/vo2\s*max/gi, '').replace(/kg|%|bpm|ml\/kg/gi, '').trim();
+            // If string looks like a full date (e.g. 2026-03-14), do NOT parse year as a number!
+            if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(s) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/.test(s)) {
+                return 0;
+            }
+            // Extract first valid decimal number
+            const match = s.match(/-?\d+(?:[.,]\d+)?/);
+            if (!match) return 0;
+            const parsed = parseFloat(match[0].replace(',', '.'));
+            return isNaN(parsed) ? 0 : Number(parsed.toFixed(1));
+        }
+
+        function normalizeDateStr(raw) {
+            if (!raw) return '';
+            let s = String(raw).replace(/^["']|["']$/g, '').trim();
+            if (!s) return '';
+
+            // Handle Google Visualization Date(yyyy,m,d)
+            const gDate = s.match(/^Date\((\d+),(\d+),(\d+)/);
+            if (gDate) {
+                return `${gDate[1]}-${String(parseInt(gDate[2], 10) + 1).padStart(2, '0')}-${String(gDate[3]).padStart(2, '0')}`;
+            }
+
+            // Match DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY
+            const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+            if (dmy) {
+                const day = dmy[1].padStart(2, '0');
+                const month = dmy[2].padStart(2, '0');
+                const year = dmy[3].length === 2 ? '20' + dmy[3] : dmy[3];
+                return `${year}-${month}-${day}`;
+            }
+            // Match YYYY-MM-DD or YYYY/MM/DD
+            const ymd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+            if (ymd) {
+                return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+            }
+            return s;
+        }
+
+        function looksLikeDate(str) {
+            if (!str) return false;
+            const s = String(str).replace(/^["']|["']$/g, '').trim();
+            if (/^Date\(/i.test(s)) return true;
+            // Must have 2 date separators (e.g. 14-03-2026 or 2026-03-14) so decimals like "20.8" are NEVER mistaken for dates!
+            if (/^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$/.test(s)) return true;
+            if (/^\d{1,2}\s*[./-]\s*([a-zA-Z]{3,}|\d{1,2})$/.test(s) && s.includes('/')) return true;
+            return false;
+        }
+
+        function normHeader(str) {
+            return String(str || '')
+                .toLowerCase()
+                .replace(/æ/g, 'ae')
+                .replace(/ø/g, 'o')
+                .replace(/å/g, 'aa')
+                .replace(/[^a-z0-9]/g, '');
+        }
+
+        function splitCsvLine(line, delimiter) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    inQuotes = !inQuotes;
+                } else if (ch === delimiter && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += ch;
+                }
+            }
+            result.push(current.trim());
+            return result.map(c => c.replace(/^["']|["']$/g, '').trim());
+        }
+
+        // Unpack a row if it's trapped as a single cell containing CSV values (e.g. pasted directly in col A)
+        function unpackRowIfSingleCell(cols) {
+            if (!cols || cols.length === 0) return [];
+            if (cols.length === 1 && cols[0]) {
+                const raw = cols[0];
+                const semiCount = (raw.match(/;/g) || []).length;
+                const commaCount = (raw.match(/,/g) || []).length;
+                if (semiCount > 0 || commaCount > 0) {
+                    const delim = semiCount >= commaCount ? ';' : ',';
+                    return splitCsvLine(raw, delim);
+                }
+            }
+            return cols;
+        }
+
+        function smartClassifyAndParseCsv(csvText) {
+            const healthRows = [];
+            const strengthRows = [];
+            let debugSummary = '';
+            if (!csvText) return { healthRows, strengthRows, debugSummary };
+
+            const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+            if (lines.length === 0) return { healthRows, strengthRows, debugSummary };
+
+            // Determine primary delimiter
+            const semiTotal = (lines[0].match(/;/g) || []).length;
+            const commaTotal = (lines[0].match(/,/g) || []).length;
+            const delimiter = semiTotal > commaTotal ? ';' : ',';
+
+            // Split and auto-unpack rows if a row is trapped in a single cell
+            const rows = lines
+                .map(l => splitCsvLine(l, delimiter))
+                .map(unpackRowIfSingleCell);
+
+            // 1. Locate header row within first 6 rows
+            let headerRowIdx = -1;
+            let rawHeaders = [];
+            let normHeaders = [];
+
+            for (let r = 0; r < Math.min(6, rows.length); r++) {
+                const candidateNorm = rows[r].map(normHeader);
+                const matches = candidateNorm.filter(h =>
+                    h.includes('dato') || h.includes('date') ||
+                    h.includes('vaegt') || h.includes('weight') ||
+                    h.includes('fedt') || h.includes('fat') ||
+                    h.includes('muskel') || h.includes('muscle') ||
+                    h.includes('vo2') || h.includes('ovelse') ||
+                    h.includes('exercise') || h.includes('belastning') || h === 'kg'
+                );
+                // Require at least 2 distinct header names and ensure they are separate columns
+                if (matches.length >= 2 && rows[r].length >= 2) {
+                    headerRowIdx = r;
+                    rawHeaders = rows[r];
+                    normHeaders = candidateNorm;
+                    break;
+                }
+            }
+
+            if (headerRowIdx !== -1) {
+                const exIdx = normHeaders.findIndex(h => h.includes('ovelse') || h.includes('exercise') || h.includes('traening') || h.includes('maskine'));
+                const fatIdx = normHeaders.findIndex(h => h.includes('fedt') || h.includes('fat'));
+                const muscleIdx = normHeaders.findIndex(h => h.includes('muskel') || h.includes('muscle'));
+                const vo2Idx = normHeaders.findIndex(h => h.includes('vo2') || h.includes('kondition') || h.includes('ilt'));
+
+                // Find Health Weight (must not be the exercise or load column)
+                let weightIdx = normHeaders.findIndex((h, idx) =>
+                    idx !== exIdx && idx !== fatIdx && idx !== muscleIdx && idx !== vo2Idx &&
+                    (h.includes('kropsvaegt') || h === 'vaegt' || h === 'vaegtkg' || h === 'weight')
+                );
+                if (weightIdx === -1 && (fatIdx !== -1 || muscleIdx !== -1 || vo2Idx !== -1)) {
+                    weightIdx = normHeaders.findIndex((h, idx) => idx !== exIdx && (h.includes('vaegt') || h.includes('weight')));
+                }
+
+                // Find Strength Load (Belastning / Kg)
+                let loadIdx = normHeaders.findIndex((h, idx) =>
+                    idx !== weightIdx && idx !== exIdx && idx !== fatIdx && idx !== muscleIdx && idx !== vo2Idx &&
+                    (h.includes('belastning') || h === 'kg' || h.includes('load') || h.includes('vaegt') || h.includes('weight'))
+                );
+                if (loadIdx === -1 && exIdx !== -1) {
+                    loadIdx = exIdx + 1;
+                }
+
+                // Find Date columns
+                const allDateIndices = [];
+                normHeaders.forEach((h, idx) => {
+                    if (h.includes('dato') || h.includes('date') || h.includes('tid')) {
+                        allDateIndices.push(idx);
+                    }
+                });
+
+                const healthDateIdx = allDateIndices.length > 0 ? allDateIndices[0] : 0;
+                let strengthDateIdx = -1;
+                if (exIdx !== -1) {
+                    const nearby = allDateIndices.find(d => Math.abs(d - exIdx) <= 2);
+                    strengthDateIdx = nearby !== undefined ? nearby : (allDateIndices[allDateIndices.length - 1] || 0);
+                }
+
+                const hasHealthCols = (fatIdx !== -1 || muscleIdx !== -1 || vo2Idx !== -1 || (weightIdx !== -1 && exIdx === -1));
+                const hasStrengthCols = (exIdx !== -1 && loadIdx !== -1);
+
+                debugSummary = `Kolonner: [${rawHeaders.filter(Boolean).join(' | ')}] (Vægt-kolonne: ${weightIdx}, Fedt: ${fatIdx}, Muskel: ${muscleIdx}, VO2: ${vo2Idx})`;
+
+                for (let r = headerRowIdx + 1; r < rows.length; r++) {
+                    const cols = rows[r];
+                    if (!cols || cols.every(c => !c || c === '')) continue;
+
+                    if (hasHealthCols) {
+                        const rawDate = (healthDateIdx !== -1 && cols[healthDateIdx]) ? cols[healthDateIdx] : cols[0];
+                        const date = looksLikeDate(rawDate) ? normalizeDateStr(rawDate) : getTodayIso();
+
+                        const weight = (weightIdx !== -1 && weightIdx !== healthDateIdx) ? parseNum(cols[weightIdx]) : 0;
+                        const fat = (fatIdx !== -1 && fatIdx !== healthDateIdx) ? parseNum(cols[fatIdx]) : 0;
+                        const muscle = (muscleIdx !== -1 && muscleIdx !== healthDateIdx) ? parseNum(cols[muscleIdx]) : 0;
+                        const vo2 = (vo2Idx !== -1 && vo2Idx !== healthDateIdx) ? parseNum(cols[vo2Idx]) : 0;
+
+                        if (weight > 0 || fat > 0 || muscle > 0 || vo2 > 0) {
+                            healthRows.push({ date, weight, fat, muscle, vo2 });
+                        }
+                    }
+
+                    if (hasStrengthCols && cols[exIdx]) {
+                        const exercise = String(cols[exIdx]).trim();
+                        const weight = parseNum(cols[loadIdx]);
+                        let rawDate = (strengthDateIdx !== -1 && cols[strengthDateIdx]) ? cols[strengthDateIdx] : cols[0];
+                        const date = looksLikeDate(rawDate) ? normalizeDateStr(rawDate) : getTodayIso();
+
+                        if (exercise && /[a-zA-ZæøåÆØÅ]/.test(exercise) && !looksLikeDate(exercise) && weight > 0) {
+                            strengthRows.push({ date, exercise, weight });
+                        }
+                    }
+                }
+
+                if (healthRows.length > 0 || strengthRows.length > 0) {
+                    return { healthRows, strengthRows, debugSummary };
+                }
+            }
+
+            for (let i = 0; i < rows.length; i++) {
+                const cols = rows[i];
+                const nonEmpty = cols.filter(c => c !== '');
+                if (nonEmpty.length < 2) continue;
+
+                const c0Norm = normHeader(nonEmpty[0]);
+                if (c0Norm.includes('dato') || c0Norm.includes('ovelse') || c0Norm.includes('vaegt')) continue;
+
+                const firstColIsText = /[a-zA-ZæøåÆØÅ]{2,}/.test(nonEmpty[0]) && !looksLikeDate(nonEmpty[0]);
+                const secondColIsText = /[a-zA-ZæøåÆØÅ]{2,}/.test(nonEmpty[1]) && !looksLikeDate(nonEmpty[1]);
+
+                if (secondColIsText && nonEmpty.length >= 3) {
+                    const date = looksLikeDate(nonEmpty[0]) ? normalizeDateStr(nonEmpty[0]) : getTodayIso();
+                    const exercise = nonEmpty[1].trim();
+                    const weight = parseNum(nonEmpty[2]);
+                    if (exercise && weight > 0) strengthRows.push({ date, exercise, weight });
+                } else if (firstColIsText && nonEmpty.length >= 2) {
+                    const exercise = nonEmpty[0].trim();
+                    const weight = parseNum(nonEmpty[1]);
+                    const date = (nonEmpty[2] && looksLikeDate(nonEmpty[2])) ? normalizeDateStr(nonEmpty[2]) : getTodayIso();
+                    if (exercise && weight > 0) strengthRows.push({ date, exercise, weight });
+                } else {
+                    const hasDateInFirst = looksLikeDate(cols[0]);
+                    const date = hasDateInFirst ? normalizeDateStr(cols[0]) : getTodayIso();
+                    const startIdx = hasDateInFirst ? 1 : 0;
+                    const weight = parseNum(cols[startIdx]);
+                    const fat = parseNum(cols[startIdx + 1]);
+                    const muscle = parseNum(cols[startIdx + 2]);
+                    const vo2 = parseNum(cols[startIdx + 3]);
+                    if (weight > 0 || fat > 0 || muscle > 0 || vo2 > 0) {
+                        healthRows.push({ date, weight, fat, muscle, vo2 });
+                    }
+                }
+            }
+
+            return { healthRows, strengthRows, debugSummary };
+        }
+
+        // Copy Helper
+        function copyFormat(type) {
+            const format = type === 'health' 
+                ? 'Dato,Vaegt,Fedtprocent,Muskelprocent,VO2Max\n2026-01-01,84.5,16.5,41.2,46'
+                : 'Dato,Ovelse,Belastning\n2026-01-05,Baenkpres,70';
+            
+            const textarea = document.createElement('textarea');
+            textarea.value = format;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            showToast('Format kopieret til udklipsholder!');
+        }
+
+        // Notification Toast Helper
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMessage');
+            if (!toast || !toastMsg) return;
+
+            toastMsg.innerText = msg;
+            toast.className = `fixed bottom-5 right-5 z-50 text-slate-950 font-bold px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform flex items-center gap-2 ${
+                isError ? 'bg-rose-500' : 'bg-emerald-400'
+            }`;
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
