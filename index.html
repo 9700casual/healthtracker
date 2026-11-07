@@ -750,20 +750,37 @@
         <!-- TAB 2: STRENGTH & EXERCISES -->
         <section id="section-strength" class="tab-section hidden space-y-6">
             
-            <!-- Exercise Selection Pills -->
-            <div class="glass-card rounded-2xl p-4 sm:p-5">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Vælg Øvelse (3 x 8 gentagelser)</h2>
-                    <span class="text-xs text-sage-400 font-light" id="exerciseCountBadge">-- øvelser fundet</span>
+            <!-- 1. All Exercises Overview Cards (ØVERST) -->
+            <div class="glass-card rounded-2xl p-4 sm:p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-medium text-white flex items-center gap-2">
+                            <i class="fa-solid fa-dumbbell text-sage-400 text-sm"></i> Styrkeøvelser & Nuværende Vægt
+                        </h2>
+                        <p class="text-xs text-slate-400 font-light mt-0.5">Dine øvelser (3x8) med seneste arbejdsvægt og personlige rekorder</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-sage-300 bg-sage-500/10 border border-sage-500/20 px-3 py-1 rounded-full font-medium" id="exerciseCountBadge">-- øvelser fundet</span>
+                        <button onclick="openQuickLogModal('strength')" class="px-3.5 py-1.5 bg-gradient-to-r from-sage-500 to-teal-600 hover:from-sage-400 hover:to-teal-500 active:scale-95 text-slate-950 font-semibold rounded-xl text-xs transition-all shadow-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-plus text-[10px]"></i> Ny Øvelse
+                        </button>
+                    </div>
                 </div>
-                <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="exercisePillsContainer">
+
+                <!-- Exercise Quick Filter Pills -->
+                <div class="flex gap-2 overflow-x-auto no-scrollbar pb-3 mb-4 border-b border-white/5" id="exercisePillsContainer">
                     <!-- Dynamic exercise chips -->
+                </div>
+
+                <!-- All Exercises Grid Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4" id="allExercisesGrid">
+                    <!-- Dynamically populated card grid -->
                 </div>
             </div>
 
-            <!-- Exercise Progress Highlight Card -->
+            <!-- 2. Selected Exercise Detail & 3. Line Chart (NEDERST) -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Selected Exercise Stats -->
+                <!-- Selected Exercise Stats & Quick-Bump -->
                 <div class="glass-card rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-4">
@@ -811,27 +828,17 @@
                     </div>
                 </div>
 
-                <!-- Exercise Progress Line Chart -->
+                <!-- Exercise Progress Line Chart (NEDERST) -->
                 <div class="lg:col-span-2 glass-card rounded-2xl p-4 sm:p-6">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-base font-medium text-white flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-sage-400 text-sm"></i> Styrkeudvikling
+                            <i class="fa-solid fa-chart-line text-sage-400 text-sm"></i> Styrkeudvikling over tid
                         </h3>
                         <span class="text-xs text-slate-400 font-light" id="exChartTitle">Progression</span>
                     </div>
                     <div class="relative w-full h-[260px]">
                         <canvas id="strengthChart"></canvas>
                     </div>
-                </div>
-            </div>
-
-            <!-- Grid of All Exercises Overview Cards -->
-            <div class="glass-card rounded-2xl p-4 sm:p-6">
-                <h3 class="text-base font-medium text-white mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-border-all text-slate-400 text-xs"></i> Overblik over alle øvelser
-                </h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="allExercisesGrid">
-                    <!-- Dynamically populated card grid -->
                 </div>
             </div>
         </section>
