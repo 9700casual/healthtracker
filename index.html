@@ -60,6 +60,8 @@
     <!-- Firebase SDK (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- Optional Local Firebase Configuration (Ignored by Git) -->
+    <script src="firebase-config.js"></script>
 
     <!-- Standalone Cloud, Firebase & Local Sync Integration -->
     <script>
@@ -69,15 +71,8 @@
         window.cloudStrengthEntries = [];
         window.cloudDeletedExercises = [];
 
-        // Firebase instance variables
-        window.DEFAULT_FIREBASE_CONFIG = {
-            apiKey: "AIzaSyBp5J7a3ptfNbYJBeHXcNx7i8erM09upWQ",
-            authDomain: "mit-fittrack.firebaseapp.com",
-            projectId: "mit-fittrack",
-            storageBucket: "mit-fittrack.firebasestorage.app",
-            messagingSenderId: "543673643808",
-            appId: "1:543673643808:web:9ba5eacdb03005130c5d45"
-        };
+        // Firebase instance variables (Config loaded from firebase-config.js or localStorage)
+        window.DEFAULT_FIREBASE_CONFIG = window.DEFAULT_FIREBASE_CONFIG || null;
         window.firebaseApp = null;
         window.firebaseDb = null;
         window.firebaseConnected = false;
@@ -905,7 +900,7 @@
                             <span class="text-[11px] text-copper-400 font-normal"><i class="fa-solid fa-lock mr-1"></i>Gemmes sikkert i browseren</span>
                         </label>
                         <textarea id="firebaseConfigInput" rows="5" placeholder='const firebaseConfig = {
-  apiKey: "AIzaSy...",
+  apiKey: "DIN_API_KEY_HER",
   authDomain: "dit-projekt.firebaseapp.com",
   projectId: "dit-projekt",
   storageBucket: "dit-projekt.appspot.com",
@@ -1422,6 +1417,9 @@
 
             if (!fbConfig && window.DEFAULT_FIREBASE_CONFIG) {
                 fbConfig = window.DEFAULT_FIREBASE_CONFIG;
+                try {
+                    localStorage.setItem('fittrack_firebase_config', JSON.stringify(fbConfig));
+                } catch (e) {}
             }
 
             if (fbConfig) {

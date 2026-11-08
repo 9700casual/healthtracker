@@ -1,0 +1,6 @@
+# Private Firebase configuration
+firebase-config.js
+
+# OS files
+.DS_Store
+Thumbs.db
